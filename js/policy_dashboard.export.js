@@ -2,53 +2,53 @@
 
 // Block E1 – HTML export (downloadStandaloneDashboard)
 
-  function downloadStandaloneDashboard(exportFixed) {
-    if (!currentScenarios || !currentScenarios.length) {
-      alert("Please build the dashboard before downloading.");
-      return;
+async function downloadStandaloneDashboard(exportFixed) {
+  if (!currentScenarios || !currentScenarios.length) {
+    alert("Please build the dashboard before downloading.");
+    return;
+  }
+
+  // 1) Capture current UI state (chart visibility, table variables, color-coding)
+  const chartSelections = {};
+  document.querySelectorAll(".chart-toggle").forEach(t => {
+    const id = t.getAttribute("data-chart-id");
+    if (id) {
+      chartSelections[id] = !!t.checked;
     }
+  });
 
-    // Capture current UI state (chart visibility, table variables, color-coding)
-    const chartSelections = {};
-    document.querySelectorAll(".chart-toggle").forEach(t => {
-      const id = t.getAttribute("data-chart-id");
-      if (id) {
-        chartSelections[id] = !!t.checked;
-      }
-    });
+  const tableVarSelections = {};
+  document.querySelectorAll(".table-var-checkbox").forEach(cb => {
+    const id = cb.getAttribute("data-var-id");
+    if (id) {
+      tableVarSelections[id] = !!cb.checked;
+    }
+  });
 
-    const tableVarSelections = {};
-    document.querySelectorAll(".table-var-checkbox").forEach(cb => {
-      const id = cb.getAttribute("data-var-id");
-      if (id) {
-        tableVarSelections[id] = !!cb.checked;
-      }
-    });
+  const colorCodeCheckbox = document.getElementById("color-code-headers");
+  const colorCodeHeadersState = !!(colorCodeCheckbox && colorCodeCheckbox.checked);
 
-    const colorCodeCheckbox = document.getElementById("color-code-headers");
-    const colorCodeHeadersState = !!(colorCodeCheckbox && colorCodeCheckbox.checked);
+  const uiState = {
+    charts: chartSelections,
+    tableVars: tableVarSelections,
+    colorCodeHeaders: colorCodeHeadersState
+  };
 
-    const uiState = {
-      charts: chartSelections,
-      tableVars: tableVarSelections,
-      colorCodeHeaders: colorCodeHeadersState
-    };
+  // 2) Prepare data to embed
+  const exportScenarios = currentScenarios.map(s => ({
+    name: s.name,
+    color: s.color,
+    data: s.data
+  }));
+  const ranges = getRangeConfig();
 
-    // Prepare data to embed
-    const exportScenarios = currentScenarios.map(s => ({
-      name: s.name,
-      color: s.color,
-      data: s.data
-    }));
-    const ranges = getRangeConfig();
+  const exportScenariosJson = JSON.stringify(exportScenarios).replace(/<\/script/gi, "<\\/script");
+  const exportRangesJson = JSON.stringify(ranges).replace(/<\/script/gi, "<\\/script");
+  const exportSummaryFreqJson = JSON.stringify(summaryFrequency);
+  const exportUIStateJson = JSON.stringify(uiState).replace(/<\/script/gi, "<\\/script");
+  const exportFixedJson = JSON.stringify(!!exportFixed);
 
-    const exportScenariosJson = JSON.stringify(exportScenarios).replace(/<\/script/gi, "<\\/script");
-    const exportRangesJson = JSON.stringify(ranges).replace(/<\/script/gi, "<\\/script");
-    const exportSummaryFreqJson = JSON.stringify(summaryFrequency);
-    const exportUIStateJson = JSON.stringify(uiState).replace(/<\/script/gi, "<\\/script");
-    const exportFixedJson = JSON.stringify(!!exportFixed);
-
-    const injectionScript = `
+  const injectionScript = `
 <script>
 (function(){
   window.__EXPORTED_SCENARIOS = ${exportScenariosJson};
@@ -92,7 +92,7 @@
       });
 
       if (typeof ui.colorCodeHeaders === "boolean") {
-        var cc = document.getElementById("color-code-headers");
+        var cc = document.getElementById("summary-color-toggle") || document.getElementById("color-code-headers");
         colorCodeTableHeaders = ui.colorCodeHeaders;
         if (cc) cc.checked = colorCodeTableHeaders;
       }
@@ -151,35 +151,100 @@
 <\/script>
 `;
 
-    const htmlNode = document.documentElement;
-    let docHtml = htmlNode.outerHTML;
-    const closingTag = '</body>';
-    const idx = docHtml.lastIndexOf(closingTag);
-    let finalHtml;
-    if (idx !== -1) {
-      finalHtml =
-        '<!doctype html>\n' +
-        docHtml.slice(0, idx) +
-        injectionScript +
-        docHtml.slice(idx);
-    } else {
-      finalHtml = '<!doctype html>\n' + docHtml + injectionScript;
+  // 3) Fetch CSS and JS assets to inline (single-file export)
+  let cssText = "";
+  try {
+    const cssResp = await fetch("css/policy_dashboard.css");
+    if (cssResp.ok) {
+      cssText = await cssResp.text();
     }
-
-    const blob = new Blob([finalHtml], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const ts = new Date();
-    const yyyy = ts.getFullYear();
-    const mm = String(ts.getMonth() + 1).padStart(2, '0');
-    const dd = String(ts.getDate()).padStart(2, '0');
-    a.href = url;
-    a.download = 'mpc_dashboard_' + yyyy + mm + dd + '.html';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.warn("Failed to inline CSS", e);
   }
+
+  const scriptPaths = [
+    "js/policy_dashboard.data.js",
+    "js/policy_dashboard.charts.js",
+    "js/policy_dashboard.summary.js",
+    "js/policy_dashboard.export.js",
+    "js/policy_dashboard.core.js"
+  ];
+  const scriptTexts = [];
+  for (const path of scriptPaths) {
+    try {
+      const resp = await fetch(path);
+      if (resp.ok) {
+        scriptTexts.push(await resp.text());
+      }
+    } catch (e) {
+      console.warn("Failed to inline JS:", path, e);
+    }
+  }
+
+  const inlineCssBlock = cssText
+    ? `<style>\n${cssText.replace(/<\/style/gi, "<\\/style")}\n</style>`
+    : "";
+
+  const inlineJsBlock = scriptTexts.length
+    ? `<script>\n${scriptTexts.join("\n\n").replace(/<\/script/gi, "<\\/script")}\n</script>`
+    : "";
+
+  // 4) Build final HTML document
+  const htmlNode = document.documentElement;
+  let docHtml = htmlNode.outerHTML;
+
+  // Remove external app CSS link from exported copy
+  docHtml = docHtml.replace(
+    /<link[^>]+href=["']css\/policy_dashboard\.css["'][^>]*>\s*/i,
+    ""
+  );
+
+  // Remove external app JS script tags from exported copy
+  scriptPaths.forEach(path => {
+    const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(
+      `<script[^>]+src=["']${escaped}["'][^>]*>\\s*<\\/script>`,
+      "ig"
+    );
+    docHtml = docHtml.replace(re, "");
+  });
+
+  // Inject inline CSS right after <head>
+  if (inlineCssBlock) {
+    docHtml = docHtml.replace("<head>", "<head>" + inlineCssBlock);
+  }
+
+  const closingTag = "</body>";
+  const idx = docHtml.lastIndexOf(closingTag);
+  const bundleScripts = inlineJsBlock + "\n" + injectionScript;
+
+  let finalHtml;
+  if (idx !== -1) {
+    finalHtml =
+      "<!doctype html>\n" +
+      docHtml.slice(0, idx) +
+      bundleScripts +
+      docHtml.slice(idx);
+  } else {
+    finalHtml = "<!doctype html>\n" + docHtml + bundleScripts;
+  }
+
+  // 5) Trigger download
+  const blob = new Blob([finalHtml], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const ts = new Date();
+  const yyyy = ts.getFullYear();
+  const mm = String(ts.getMonth() + 1).padStart(2, "0");
+  const dd = String(ts.getDate()).padStart(2, "0");
+  a.href = url;
+  a.download = "mpc_dashboard_" + yyyy + mm + dd + ".html";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 
   // Block E2 – Table row estimate & suggestion helpers
 
