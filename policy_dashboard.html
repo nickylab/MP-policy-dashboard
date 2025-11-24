@@ -1,0 +1,2562 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MPC Policy Rate Dashboard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+
+  <!-- Plotly for charts -->
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <!-- PapaParse for CSV parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- jsPDF + svg2pdf for vector PDF export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highstock/6.0.3/lib/svg2pdf.js"></script>
+
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --fg: #0b1222;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #2563eb;
+      --card: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    header {
+      max-width: 1100px;
+      margin: 24px auto 8px;
+      padding: 0 16px;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 26px;
+      font-weight: 800;
+    }
+    .lede {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto 32px;
+      padding: 0 16px 32px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 16px;
+      box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+      margin-bottom: 16px;
+    }
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+    .scenario-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr 2fr auto;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .scenario-row input[type="text"] {
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .scenario-row input[type="file"] {
+      font-size: 12px;
+    }
+    .scenario-row label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .scenario-row button {
+      border: none;
+      background: transparent;
+      color: #ef4444;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 13px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--fg);
+      border-color: var(--border);
+    }
+    .btn + .btn {
+      margin-left: 8px;
+    }
+    .step-actions {
+      margin-top: 10px;
+      display: flex;
+      justify-content: flex-end;
+    }
+    #dashboard-step {
+      display: none;
+    }
+    .charts-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .chart-box {
+      flex: 0 0 calc(50% - 8px); /* always half width on desktop */
+      min-width: 0;
+      height: 260px;
+    }
+    @media (max-width: 959px) {
+      .chart-box {
+        flex: 0 0 100%;          /* full width on smaller screens */
+      }
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 12px;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 6px 8px;
+    }
+    th {
+      background: #f9fafb;
+      font-weight: 600;
+      text-align: center;
+    }
+    td {
+      text-align: center;
+    }
+    .table-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .table-option input {
+      margin: 0;
+    }
+    .chart-toggle,
+    .table-var-checkbox,
+    .table-frequency-radio {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    }
+    .chart-pill-label,
+    .table-var-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0;
+      position: relative;
+    }
+    .chart-toggle + span,
+    .table-var-checkbox + span,
+    .table-frequency-radio + span {
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: #ffffff;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    }
+    .chart-toggle:checked + span,
+    .table-var-checkbox:checked + span,
+    .table-frequency-radio:checked + span {
+    border-color: var(--accent);
+    background: rgba(37,99,235,0.07);
+    color: var(--accent);
+    }
+    .table-vars {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    caption {
+      caption-side: top;
+      text-align: left;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--muted);
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #0369a1;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .range-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .range-input {
+      flex: 1;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .range-sep {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .range-hint {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    #summary-tables {
+      width: 100%;
+      overflow-x: auto;
+      padding-bottom: 12px; /* extra space so horizontal scrollbar does not overlap last row */
+    }
+
+    #summary-tables table {
+      width: auto;
+      min-width: 100%;
+    }
+    .site-footer {
+      max-width: 1100px;
+      margin: 0 auto 24px;
+      padding: 8px 16px 0;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: right;
+    }
+    .download-wrapper{position:relative;display:inline-flex;align-items:center;}
+    .download-menu{position:absolute;right:0;top:calc(100% + 6px);background:var(--card);border-radius:8px;border:1px solid var(--border);box-shadow:0 10px 25px rgba(15,23,42,0.12);padding:8px;min-width:220px;opacity:0;transform:translateY(-4px);pointer-events:none;transition:opacity .16s ease,transform .16s ease;z-index:20;}
+    .download-menu.open{opacity:1;transform:translateY(0);pointer-events:auto;}
+    .download-menu button{width:100%;text-align:left;border:none;background:transparent;padding:6px 8px;border-radius:6px;font-size:12px;cursor:pointer;}
+    .download-menu button:hover{background:#eff6ff;}
+    .download-submenu{
+      margin-top:4px;
+      padding-left:12px;
+      border-top:1px solid var(--border);
+      display:none;
+    }
+    .download-submenu.open{
+      display:block;
+    }
+    .download-submenu button{
+      font-size:11px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>MPC Policy Rate Projection Dashboard</h1>
+  <p class="lede">
+    Upload MPC projections (chartpackcsv), then compare output gaps and policy rate projections across scenarios.
+  </p>
+</header>
+
+<main>
+  <!-- Step 1: config and upload -->
+  <section id="config-step" class="card">
+    <h2>1. Upload projection files</h2>
+    <div id="scenario-list"></div>
+    <button id="add-scenario" class="btn btn-ghost">+ Add scenario</button>
+
+    <div class="step-actions">
+      <!-- Button moved to range-config; this area stays empty to keep spacing if needed -->
+    </div>
+  </section>
+
+  <!-- Step 1.5: range configuration -->
+  <section id="range-config" class="card">
+    <h2>2. Set plot and table ranges</h2>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">
+      Define the common time ranges used for all charts and tables. Leave fields blank to use defaults.
+    </p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:flex-start;max-width:100%;">
+      <!-- Plot range -->
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">
+          Plot range (all charts)
+        </label>
+        <div class="range-row">
+          <select id="plot-min" class="range-input"></select>
+          <span class="range-sep">to</span>
+          <select id="plot-max" class="range-input"></select>
+        </div>
+        <div class="range-hint">Default: 2019Q4–2030Q4</div>
+      </div>
+
+      <!-- Actual data range -->
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">
+          Actual data range (shaded)
+        </label>
+        <div class="range-row">
+          <select id="actual-min" class="range-input" disabled></select>
+          <span class="range-sep">to</span>
+          <select id="actual-max" class="range-input"></select>
+        </div>
+        <div class="range-hint">Default: 2019Q4–current quarter</div>
+      </div>
+
+      <!-- Table range -->
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">
+          Table range
+        </label>
+        <div class="range-row">
+          <select id="table-min" class="range-input"></select>
+          <span class="range-sep">to</span>
+          <select id="table-max" class="range-input"></select>
+        </div>
+        <div class="range-hint">Default: 2019Q4–2030Q4</div>
+      </div>
+    </div>
+    <div class="step-actions">
+      <button id="build-dashboard" class="btn btn-primary">Build dashboard</button>
+    </div>
+  </section>
+
+  <!-- Step 2: dashboard -->
+  <section id="dashboard-step">
+    <div class="card" style="margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <h2 style="margin:0;">Interactive dashboard</h2>
+        <div style="display:flex;align-items:center;gap:8px;">
+        <span class="pill" id="scenario-count-label"></span>
+        <div id="download-wrapper" class="download-wrapper">
+          <button id="download-toggle" class="btn btn-primary">Download</button>
+          <div id="download-menu" class="download-menu">
+            <button type="button" id="download-html-parent">As HTML ▸</button>
+            <div id="download-html-submenu" class="download-submenu">
+              <button type="button" data-download="html-interactive">Interactive</button>
+              <button type="button" data-download="html-fixed">Snapshot</button>
+            </div>
+            <button type="button" data-download="pdf">As PDF</button>
+          </div>
+        </div>
+        <button id="back-to-config" class="btn btn-ghost">Back to file selection</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="scenario-legend" style="margin-bottom:8px;font-size:11px;color:var(--muted);"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <h3 style="margin:0;font-size:14px;">Charts</h3>
+        <div id="chart-toggle-row" style="display:flex;flex-wrap:wrap;gap:8px;font-size:11px;color:var(--muted);">
+          <label class="chart-pill-label" style="display:inline-flex;align-items:center;gap:4px;">
+            <input type="checkbox" class="chart-toggle" data-chart-id="chart-output-gap" checked>
+            <span>Output Gap</span>
+          </label>
+          <label class="chart-pill-label" style="display:inline-flex;align-items:center;gap:4px;">
+            <input type="checkbox" class="chart-toggle" data-chart-id="chart-output-levels" checked>
+            <span>Output &amp; Potential</span>
+          </label>
+          <label class="chart-pill-label" style="display:inline-flex;align-items:center;gap:4px;">
+            <input type="checkbox" class="chart-toggle" data-chart-id="chart-headline-yoy" checked>
+            <span>Headline YoY</span>
+          </label>
+          <label class="chart-pill-label" style="display:inline-flex;align-items:center;gap:4px;">
+            <input type="checkbox" class="chart-toggle" data-chart-id="chart-core-yoy">
+            <span>Core YoY</span>
+          </label>
+          <label class="chart-pill-label" style="display:inline-flex;align-items:center;gap:4px;">
+            <input type="checkbox" class="chart-toggle" data-chart-id="chart-policy" checked>
+            <span>Policy Rate</span>
+          </label>
+          <label class="chart-pill-label" style="display:inline-flex;align-items:center;gap:4px;">
+            <input type="checkbox" class="chart-toggle" data-chart-id="chart-policy-step">
+            <span>Policy Rate (step)</span>
+          </label>
+          <label class="chart-pill-label" style="display:inline-flex;align-items:center;gap:4px;">
+            <input type="checkbox" class="chart-toggle" data-chart-id="chart-potential-growth">
+            <span>Potential Growth</span>
+          </label>
+          <label class="chart-pill-label" style="display:inline-flex;align-items:center;gap:4px;">
+            <input type="checkbox" class="chart-toggle" data-chart-id="chart-core-qoq">
+            <span>Core QoQ</span>
+          </label>
+          <label class="chart-pill-label" style="display:inline-flex;align-items:center;gap:4px;">
+            <input type="checkbox" class="chart-toggle" data-chart-id="chart-headline-qoq">
+            <span>Headline QoQ</span>
+          </label>
+        </div>
+      </div>
+      <div class="charts-grid">
+        <div class="chart-box" id="chart-output-gap"></div>
+        <div class="chart-box" id="chart-output-levels"></div>
+        <div class="chart-box" id="chart-headline-yoy"></div>
+        <div class="chart-box" id="chart-core-yoy"></div>
+        <div class="chart-box" id="chart-policy"></div>
+        <div class="chart-box" id="chart-policy-step"></div>
+        <div class="chart-box" id="chart-potential-growth"></div>
+        <div class="chart-box" id="chart-core-qoq"></div>
+        <div class="chart-box" id="chart-headline-qoq"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:12px;flex-wrap:wrap;">
+        <h3 style="margin:0;font-size:14px;">Summary table</h3>
+        <div id="summary-var-controls" style="display:flex;flex-direction:column;gap:6px;flex:1;min-width:0;">
+          <!-- View (Q vs Y) -->
+          <div style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:11px;color:var(--muted);">View:</span>
+            <label class="table-var-toggle">
+              <input type="radio" class="table-frequency-radio" name="table-frequency" value="quarterly" checked>
+              <span>Quarterly</span>
+            </label>
+            <label class="table-var-toggle">
+              <input type="radio" class="table-frequency-radio" name="table-frequency" value="yearly">
+              <span>Yearly</span>
+            </label>
+          </div>
+          <!-- Variables -->
+          <div>
+            <span style="display:inline-block;margin-bottom:2px;font-size:11px;color:var(--muted);">Variables:</span>
+            <div class="table-vars">
+              <label class="table-var-toggle">
+                <input type="checkbox" class="table-var-checkbox" data-var-id="ygap" checked>
+                <span>Output Gap</span>
+              </label>
+              <label class="table-var-toggle">
+                <input type="checkbox" class="table-var-checkbox" data-var-id="policy" checked>
+                <span>Policy Rate</span>
+              </label>
+              <label class="table-var-toggle">
+                <input type="checkbox" class="table-var-checkbox" data-var-id="policyStep" checked>
+                <span>Policy Rate (step)</span>
+              </label>
+              <label class="table-var-toggle">
+                <input type="checkbox" class="table-var-checkbox" data-var-id="headlineYoy">
+                <span>Headline YoY</span>
+              </label>
+              <label class="table-var-toggle">
+                <input type="checkbox" class="table-var-checkbox" data-var-id="coreYoy">
+                <span>Core YoY</span>
+              </label>
+              <label class="table-var-toggle">
+                <input type="checkbox" class="table-var-checkbox" data-var-id="gdp">
+                <span>GDP Growth YoY</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <!-- Color-code toggle separated on the right -->
+        <label id="summary-color-toggle" class="table-option" style="align-self:flex-start;">
+          <input type="checkbox" id="color-code-headers">
+          <span>Color-code scenarios</span>
+        </label>
+      </div>
+      <div id="summary-legend" style="margin-bottom:8px;font-size:11px;color:var(--muted);display:none;"></div>
+      <div id="summary-tables"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+  // Global state
+  const maxScenarios = 6;
+  const scenarios = []; // {id, name, color, file, data}
+
+  // Default ranges
+  const defaultPlotMin = "2019Q4";
+  const defaultPlotMax = "2030Q4";
+  const defaultTableMin = "2019Q4";
+  const defaultTableMax = "2030Q4";
+  const defaultActualMin = "2019Q4";
+  let availablePeriods = [];
+  let currentScenarios = [];
+  let colorCodeTableHeaders = false;
+    let summaryFrequency = "quarterly"; // "quarterly" or "yearly"
+
+    // Approximate row budgets for a single-page PDF table with current layout.
+    // Yearly view: about 10–11 years fit comfortably on one page.
+    // Quarterly view: about 40 quarters (~10 years) fit comfortably on one page.
+    const MAX_TABLE_ROWS_PER_PAGE_YEARLY = 14;
+    const MAX_TABLE_ROWS_PER_PAGE_QUARTERLY = 14;
+
+  const tableVarConfig = {
+    ygap: {
+      id: "ygap",
+      label: "Output Gap (%)",
+      accessor: r => Number(r.ygap)
+    },
+    policy: {
+      id: "policy",
+      label: "Policy Rate (%)",
+      accessor: r => Number(r.i)
+    },
+    policyStep: {
+      id: "policyStep",
+      label: "Policy Rate (%, step)",
+      accessor: r => {
+        const v = Number(r.i);
+        if (typeof v === "number" && !isNaN(v)) {
+          return Math.round(v / 0.25) * 0.25;
+        }
+        return NaN;
+      }
+    },
+    headlineYoy: {
+      id: "headlineYoy",
+      label: "Headline Inflation (%YoY)",
+      accessor: r => Number(r.picpi4)
+    },
+    coreYoy: {
+      id: "coreYoy",
+      label: "Core Inflation (%YoY)",
+      accessor: r => Number(r.pi4)
+    },
+    gdp: {
+      id: "gdp",
+      label: "GDP Growth (%YoY)",
+      accessor: r => Number(r.y_growth)
+    }
+  };
+
+
+  function augmentScenarioDataWithGrowth(rows) {
+    if (!Array.isArray(rows)) return rows;
+
+    const validRows = rows.filter(r =>
+      r.period != null &&
+      r.period !== "" &&
+      parsePeriodToIndex(r.period) != null
+    );
+
+    if (!validRows.length) return rows;
+
+    // Sort by time so we can compute 4-quarter rolling stats
+    const sorted = [...validRows].sort((a, b) => {
+      return parsePeriodToIndex(a.period) - parsePeriodToIndex(b.period);
+    });
+
+    const indexMap = {};
+    sorted.forEach(r => {
+      const idx = parsePeriodToIndex(r.period);
+      if (idx != null) indexMap[idx] = r;
+    });
+
+    function rollingMean(key, i) {
+      const window = 4;
+      if (i < window - 1) return null;
+      let sum = 0;
+      let count = 0;
+      for (let k = i - window + 1; k <= i; k++) {
+        const v = sorted[k][key];
+        if (typeof v !== "number" || isNaN(v)) return null;
+        sum += v;
+        count++;
+      }
+      if (count < window) return null;
+      return sum / count;
+    }
+
+    // First pass: compute quarterly y_growth, annual_GDP, and 4Q rolling means
+    for (let i = 0; i < sorted.length; i++) {
+      const r = sorted[i];
+      const idx = parsePeriodToIndex(r.period);
+      const prev = idx != null ? indexMap[idx - 4] : null;
+
+      const yNow  = typeof r.y === "number" ? r.y : null;
+      const yPrev = prev && typeof prev.y === "number" ? prev.y : null;
+
+      // y_growth = (y / lag(y, 4) - 1) * 100
+      if (yNow != null && yPrev != null && yPrev !== 0) {
+        r.y_growth = (yNow / yPrev - 1) * 100;
+      } else {
+        r.y_growth = r.y_growth ?? null;
+      }
+
+      const p = String(r.period).trim();
+      if (/Q4$/.test(p) && typeof r.dyA_nonsa === "number") {
+        r.annual_GDP = r.dyA_nonsa;
+      } else {
+        r.annual_GDP = r.annual_GDP ?? null;
+      }
+
+      // 4-quarter averages for yearly view
+      const avgGap = rollingMean("ygap", i);
+      if (avgGap != null) {
+        r.avg_ygap = avgGap;
+      }
+
+      const cpiMA = rollingMean("cpi_nonsa", i);
+      if (cpiMA != null) {
+        r.cpi_ma4 = cpiMA;
+      }
+
+      const coreMA = rollingMean("core_nonsa", i);
+      if (coreMA != null) {
+        r.core_ma4 = coreMA;
+      }
+    }
+
+    // Second pass: yearly HL_inf and CORE_inf from 4Q moving averages
+    for (let i = 0; i < sorted.length; i++) {
+      const r = sorted[i];
+      const idx = parsePeriodToIndex(r.period);
+      const prev = idx != null ? indexMap[idx - 4] : null;
+
+      if (typeof r.cpi_ma4 === "number" && prev && typeof prev.cpi_ma4 === "number" && prev.cpi_ma4 !== 0) {
+        r.HL_inf = (r.cpi_ma4 / prev.cpi_ma4 - 1) * 100;
+      } else {
+        r.HL_inf = r.HL_inf ?? null;
+      }
+
+      if (typeof r.core_ma4 === "number" && prev && typeof prev.core_ma4 === "number" && prev.core_ma4 !== 0) {
+        r.CORE_inf = (r.core_ma4 / prev.core_ma4 - 1) * 100;
+      } else {
+        r.CORE_inf = r.CORE_inf ?? null;
+      }
+    }
+
+    return rows;
+  }
+
+
+  function getCurrentQuarterLabel() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-based
+    const q = Math.floor(month / 3) + 1;
+    return year + "Q" + q;
+  }
+  const defaultActualMax = getCurrentQuarterLabel();
+
+  const scenarioListEl   = document.getElementById("scenario-list");
+  const addScenarioBtn   = document.getElementById("add-scenario");
+  const buildDashboardBtn = document.getElementById("build-dashboard");
+  const configStepEl     = document.getElementById("config-step");
+  const dashboardStepEl  = document.getElementById("dashboard-step");
+  const backToConfigBtn  = document.getElementById("back-to-config");
+  const scenarioCountLbl = document.getElementById("scenario-count-label");
+    const downloadWrapperEl      = document.getElementById("download-wrapper");
+    const downloadToggleBtn      = document.getElementById("download-toggle");
+    const downloadMenuEl         = document.getElementById("download-menu");
+    const downloadHtmlParentBtn  = document.getElementById("download-html-parent");
+    const downloadHtmlSubmenuEl  = document.getElementById("download-html-submenu");
+    const summaryTablesEl        = document.getElementById("summary-tables");
+  const rangeConfigEl    = document.getElementById("range-config");
+  const scenarioLegendEl = document.getElementById("scenario-legend");
+  const summaryLegendEl  = document.getElementById("summary-legend");
+  const rangeHeadingEl   = rangeConfigEl ? rangeConfigEl.querySelector("h2") : null;
+  const rangeActionsEl   = rangeConfigEl ? rangeConfigEl.querySelector(".step-actions") : null;
+  const colorCodeHeadersCheckbox = document.getElementById("color-code-headers");
+  if (colorCodeHeadersCheckbox) {
+    colorCodeHeadersCheckbox.addEventListener("change", () => {
+      colorCodeTableHeaders = !!colorCodeHeadersCheckbox.checked;
+      if (!colorCodeTableHeaders && summaryLegendEl) {
+        summaryLegendEl.style.display = "none";
+        summaryLegendEl.innerHTML = "";
+      }
+      reRenderIfReady();
+    });
+  }
+  function renderSummaryLegend(scenarios) {
+    if (!summaryLegendEl) return;
+    if (!colorCodeTableHeaders || !scenarios || !scenarios.length) {
+      summaryLegendEl.style.display = "none";
+      summaryLegendEl.innerHTML = "";
+      return;
+    }
+    const items = scenarios.map(s => {
+      const color = s.color || "#000000";
+      const name = s.name || "Scenario";
+      return `
+        <span style="display:inline-flex;align-items:center;margin-right:8px;margin-bottom:4px;">
+          <span style="width:10px;height:10px;border-radius:999px;background:${color};display:inline-block;margin-right:4px;"></span>
+          <span>${name}</span>
+        </span>
+      `;
+    });
+    summaryLegendEl.innerHTML = items.join("");
+    summaryLegendEl.style.display = "block";
+  }
+
+  const plotMinInput   = document.getElementById("plot-min");
+  const plotMaxInput   = document.getElementById("plot-max");
+  const actualMinInput = document.getElementById("actual-min");
+  const actualMaxInput = document.getElementById("actual-max");
+  const tableMinInput  = document.getElementById("table-min");
+  const tableMaxInput  = document.getElementById("table-max");
+
+
+  function getRangeConfig() {
+    return {
+      plotMin: (plotMinInput && plotMinInput.value) || defaultPlotMin,
+      plotMax: (plotMaxInput && plotMaxInput.value) || defaultPlotMax,
+      actualMin: (plotMinInput && plotMinInput.value) || defaultPlotMin,
+      actualMax: (actualMaxInput && actualMaxInput.value) || defaultActualMax,
+      tableMin: (tableMinInput && tableMinInput.value) || defaultTableMin,
+      tableMax: (tableMaxInput && tableMaxInput.value) || defaultTableMax
+    };
+  }
+
+  function getAllPeriodsFromScenarios(scens) {
+    const set = new Set();
+    scens.forEach(s => {
+      (s.data || []).forEach(r => {
+        if (r.period != null && r.period !== "") {
+          const p = String(r.period).trim();
+          if (parsePeriodToIndex(p) != null) {
+            set.add(p);
+          }
+        }
+      });
+    });
+    const arr = Array.from(set);
+    arr.sort((a, b) => parsePeriodToIndex(a) - parsePeriodToIndex(b));
+    return arr;
+  }
+
+  function populateSelectFromPeriods(selectEl, defaultVal, isMax) {
+    if (!selectEl || !availablePeriods.length) return;
+    selectEl.innerHTML = "";
+    availablePeriods.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p;
+      opt.textContent = p;
+      selectEl.appendChild(opt);
+    });
+
+    const first = availablePeriods[0];
+    const last = availablePeriods[availablePeriods.length - 1];
+    const firstIdx = parsePeriodToIndex(first);
+    const lastIdx = parsePeriodToIndex(last);
+
+    let chosen = defaultVal;
+    const chosenIdx = chosen && parsePeriodToIndex(chosen);
+
+    if (!chosenIdx) {
+      chosen = isMax ? last : first;
+    } else {
+      if (chosenIdx < firstIdx) chosen = first;
+      if (chosenIdx > lastIdx) chosen = last;
+    }
+
+    selectEl.value = chosen;
+  }
+
+  function populateRangeSelects() {
+    if (!availablePeriods.length) return;
+    populateSelectFromPeriods(plotMinInput, defaultPlotMin, false);
+    populateSelectFromPeriods(plotMaxInput, defaultPlotMax, true);
+    populateSelectFromPeriods(actualMinInput, defaultActualMin, false);
+    populateSelectFromPeriods(actualMaxInput, defaultActualMax, true);
+    populateSelectFromPeriods(tableMinInput, defaultTableMin, false);
+    populateSelectFromPeriods(tableMaxInput, defaultTableMax, true);
+
+    // Keep actual-min aligned with plot-min and non-editable
+    if (plotMinInput && actualMinInput) {
+      actualMinInput.value = plotMinInput.value;
+      actualMinInput.disabled = true;
+    }
+  }
+
+  function refreshAvailablePeriodsAndSelects() {
+    const scensWithData = scenarios.filter(s => Array.isArray(s.data) && s.data.length > 0);
+    if (!scensWithData.length) {
+      availablePeriods = [];
+      return;
+    }
+    availablePeriods = getAllPeriodsFromScenarios(scensWithData);
+    populateRangeSelects();
+  }
+
+  // Helpers
+  function createScenarioRow(id, scenario) {
+    const row = document.createElement("div");
+    row.className = "scenario-row";
+    row.dataset.id = id;
+
+    row.innerHTML = `
+      <div>
+        <label>Scenario name</label>
+        <input type="text" placeholder="e.g. MPC Dec-25 (Day 1)" class="scenario-name">
+      </div>
+      <div>
+        <label>Line color</label>
+        <input type="color" class="scenario-color" value="${scenario.color}">
+      </div>
+      <div>
+        <label>CSV file</label>
+        <input type="file" accept=".csv" class="scenario-file">
+      </div>
+      <button type="button" class="remove-scenario" title="Remove scenario">&times;</button>
+    `;
+
+    // Wire remove
+    row.querySelector(".remove-scenario").addEventListener("click", () => {
+      const idx = scenarios.findIndex(s => s.id === id);
+      if (idx >= 0) scenarios.splice(idx, 1);
+      row.remove();
+      refreshAvailablePeriodsAndSelects();
+    });
+
+    // Wire inputs to state
+    row.querySelector(".scenario-name").addEventListener("input", e => {
+      const s = scenarios.find(s => s.id === id);
+      if (s) s.name = e.target.value;
+    });
+    row.querySelector(".scenario-color").addEventListener("input", e => {
+      const s = scenarios.find(s => s.id === id);
+      if (s) s.color = e.target.value;
+    });
+    row.querySelector(".scenario-file").addEventListener("change", e => {
+      const s = scenarios.find(s => s.id === id);
+      const file = e.target.files[0] || null;
+      if (s) s.file = file;
+
+      if (file) {
+        // Extract name
+        let fname = file.name.replace(/\.[^/.]+$/, ""); // remove extension
+
+        // Convert "chartpackcsv_Dec25_Internal Briefing" into "MPC Dec-25 (Internal Briefing)"
+        // Step 1: extract month+year (e.g. Dec25)
+        const match = fname.match(/_(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(\d{2})/i);
+        let scenarioLabel = "";
+
+        if (match) {
+          const m = match[1];
+          const y = match[2];
+          scenarioLabel = `MPC ${m}-${y}`;
+        } else {
+          scenarioLabel = "MPC Scenario";
+        }
+
+        // Step 2: extract descriptor after month-year
+        const parts = fname.split(match ? match[0] : "");
+        if (parts.length > 1) {
+          let desc = parts[1].replace(/[_-]+/g, " ").trim();
+          if (desc) scenarioLabel += ` (${desc})`;
+        }
+
+        // Update scenario state + input field
+        s.name = scenarioLabel;
+        row.querySelector(".scenario-name").value = scenarioLabel;
+
+        // Parse this file immediately to populate data and refresh ranges
+        Papa.parse(file, {
+          header: true,
+          dynamicTyping: true,
+          skipEmptyLines: true,
+          complete: results => {
+            const rows = results.data.filter(r => r.period != null && r.period !== "");
+            augmentScenarioDataWithGrowth(rows);
+            s.data = rows;
+            refreshAvailablePeriodsAndSelects();
+          },
+          error: err => {
+            console.error(err);
+            alert("There was a problem reading " + file.name + ". Please check the format.");
+          }
+        });
+      }
+    });
+
+    return row;
+  }
+
+  function addScenario() {
+    if (scenarios.length >= maxScenarios) {
+      alert(`You can upload at most ${maxScenarios} scenarios for now.`);
+      return;
+    }
+    const id = Date.now() + "_" + Math.random().toString(16).slice(2);
+    const defaultColors = [
+      "#1f77b4", // blue
+      "#ff7f0e", // orange
+      "#2ca02c", // green
+      "#d62728", // red
+      "#9467bd", // purple
+      "#8c564b", // brown
+      "#e377c2", // pink
+      "#7f7f7f", // gray
+      "#bcbd22", // olive
+      "#17becf"  // teal
+    ];
+    const scenario = {
+      id,
+      name: "",
+      color: defaultColors[scenarios.length] || "#000000",
+      file: null,
+      data: null
+    };
+    scenarios.push(scenario);
+    const row = createScenarioRow(id, scenario);
+    scenarioListEl.appendChild(row);
+  }
+
+  // Initialize with 2 rows by default
+  addScenario();
+  addScenario();
+
+  addScenarioBtn.addEventListener("click", addScenario);
+
+  // Parse one scenario CSV into scenario.data
+  function parseScenario(scenario) {
+    return new Promise((resolve, reject) => {
+      if (!scenario.file) {
+        return reject(new Error("Missing file for scenario " + (scenario.name || "")));
+      }
+      Papa.parse(scenario.file, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true,
+        complete: results => {
+          const rows = results.data.filter(r => r.period != null && r.period !== "");
+          augmentScenarioDataWithGrowth(rows);
+          scenario.data = rows;
+          resolve(scenario);
+        },
+        error: err => reject(err)
+      });
+    });
+  }
+
+  function validateScenarios() {
+    const valid = scenarios.filter(s => s.file);
+    if (valid.length === 0) {
+      alert("Please upload at least one CSV file.");
+      return null;
+    }
+    // Fill default names
+    valid.forEach((s, idx) => {
+      if (!s.name || !s.name.trim()) {
+        s.name = "Scenario " + (idx + 1);
+      }
+    });
+    return valid;
+  }
+
+  // Main build dashboard action
+  buildDashboardBtn.addEventListener("click", () => {
+    const validScenarios = scenarios.filter(s => Array.isArray(s.data) && s.data.length > 0);
+    if (!validScenarios.length) {
+      alert("Please upload at least one valid CSV file before building the dashboard.");
+      return;
+    }
+
+    // Ensure ranges are populated if not done yet
+    if (!availablePeriods.length) {
+      availablePeriods = getAllPeriodsFromScenarios(validScenarios);
+      populateRangeSelects();
+    }
+
+    currentScenarios = validScenarios;
+
+    // Hide upload card, keep range card visible (as part of dashboard), show dashboard
+    configStepEl.style.display = "none";
+    dashboardStepEl.style.display = "block";
+    if (rangeConfigEl) {
+      rangeConfigEl.style.display = "block";
+    }
+    // On the dashboard page: no "2." and no Build button
+    if (rangeHeadingEl) {
+      rangeHeadingEl.textContent = "Set plot and table ranges";
+    }
+    if (rangeActionsEl) {
+      rangeActionsEl.style.display = "none";
+    }
+
+    scenarioCountLbl.textContent = `${validScenarios.length} scenario${validScenarios.length > 1 ? "s" : ""} loaded`;
+    renderDashboard(currentScenarios);
+  });
+
+  backToConfigBtn.addEventListener("click", () => {
+    dashboardStepEl.style.display = "none";
+    configStepEl.style.display = "block";
+    if (rangeConfigEl) {
+      rangeConfigEl.style.display = "block";
+    }
+    // Back on the first page: show "2." and the Build button again
+    if (rangeHeadingEl) {
+      rangeHeadingEl.textContent = "2. Set plot and table ranges";
+    }
+    if (rangeActionsEl) {
+      rangeActionsEl.style.display = "flex";
+    }
+  });
+  if (downloadToggleBtn && downloadMenuEl) {
+    downloadToggleBtn.addEventListener("click", () => {
+      downloadMenuEl.classList.toggle("open");
+      if (downloadHtmlSubmenuEl) {
+        downloadHtmlSubmenuEl.classList.remove("open");
+      }
+    });
+
+    if (downloadHtmlParentBtn && downloadHtmlSubmenuEl) {
+      downloadHtmlParentBtn.addEventListener("click", (evt) => {
+        evt.stopPropagation();
+        downloadHtmlSubmenuEl.classList.toggle("open");
+      });
+    }
+
+    downloadMenuEl.querySelectorAll("button[data-download]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const action = btn.getAttribute("data-download");
+        downloadMenuEl.classList.remove("open");
+        if (downloadHtmlSubmenuEl) {
+          downloadHtmlSubmenuEl.classList.remove("open");
+        }
+
+        if (action === "html-interactive") {
+          downloadStandaloneDashboard(false);
+        } else if (action === "html-fixed") {
+          downloadStandaloneDashboard(true);
+        } else if (action === "pdf") {
+          handlePdfDownloadClick();
+        }
+      });
+    });
+
+    document.addEventListener("click", evt => {
+      if (!downloadWrapperEl) return;
+      if (!downloadWrapperEl.contains(evt.target)) {
+        downloadMenuEl.classList.remove("open");
+        if (downloadHtmlSubmenuEl) {
+          downloadHtmlSubmenuEl.classList.remove("open");
+        }
+      }
+    });
+  }
+
+  function downloadStandaloneDashboard(exportFixed) {
+    if (!currentScenarios || !currentScenarios.length) {
+      alert("Please build the dashboard before downloading.");
+      return;
+    }
+
+    // Capture current UI state (chart visibility, table variables, color-coding)
+    const chartSelections = {};
+    document.querySelectorAll(".chart-toggle").forEach(t => {
+      const id = t.getAttribute("data-chart-id");
+      if (id) {
+        chartSelections[id] = !!t.checked;
+      }
+    });
+
+    const tableVarSelections = {};
+    document.querySelectorAll(".table-var-checkbox").forEach(cb => {
+      const id = cb.getAttribute("data-var-id");
+      if (id) {
+        tableVarSelections[id] = !!cb.checked;
+      }
+    });
+
+    const colorCodeCheckbox = document.getElementById("color-code-headers");
+    const colorCodeHeadersState = !!(colorCodeCheckbox && colorCodeCheckbox.checked);
+
+    const uiState = {
+      charts: chartSelections,
+      tableVars: tableVarSelections,
+      colorCodeHeaders: colorCodeHeadersState
+    };
+
+    // Prepare data to embed
+    const exportScenarios = currentScenarios.map(s => ({
+      name: s.name,
+      color: s.color,
+      data: s.data
+    }));
+    const ranges = getRangeConfig();
+
+    const exportScenariosJson = JSON.stringify(exportScenarios).replace(/<\/script/gi, "<\\/script");
+    const exportRangesJson = JSON.stringify(ranges).replace(/<\/script/gi, "<\\/script");
+    const exportSummaryFreqJson = JSON.stringify(summaryFrequency);
+    const exportUIStateJson = JSON.stringify(uiState).replace(/<\/script/gi, "<\\/script");
+    const exportFixedJson = JSON.stringify(!!exportFixed);
+
+    const injectionScript = `
+<script>
+(function(){
+  window.__EXPORTED_SCENARIOS = ${exportScenariosJson};
+  window.__EXPORTED_RANGES = ${exportRangesJson};
+  window.__EXPORTED_SUMMARY_FREQUENCY = ${exportSummaryFreqJson};
+  window.__EXPORTED_UI_STATE = ${exportUIStateJson};
+  window.__EXPORTED_FIXED = ${exportFixedJson};
+  document.addEventListener("DOMContentLoaded", function(){
+    if (!window.__EXPORTED_SCENARIOS || !window.__EXPORTED_SCENARIOS.length) return;
+    currentScenarios = window.__EXPORTED_SCENARIOS;
+    availablePeriods = getAllPeriodsFromScenarios(currentScenarios);
+    populateRangeSelects();
+    if (typeof window.__EXPORTED_RANGES === "object" && window.__EXPORTED_RANGES) {
+      if (plotMinInput && window.__EXPORTED_RANGES.plotMin) plotMinInput.value = window.__EXPORTED_RANGES.plotMin;
+      if (plotMaxInput && window.__EXPORTED_RANGES.plotMax) plotMaxInput.value = window.__EXPORTED_RANGES.plotMax;
+      if (actualMaxInput && window.__EXPORTED_RANGES.actualMax) actualMaxInput.value = window.__EXPORTED_RANGES.actualMax;
+      if (tableMinInput && window.__EXPORTED_RANGES.tableMin) tableMinInput.value = window.__EXPORTED_RANGES.tableMin;
+      if (tableMaxInput && window.__EXPORTED_RANGES.tableMax) tableMaxInput.value = window.__EXPORTED_RANGES.tableMax;
+      if (actualMinInput && plotMinInput) {
+        actualMinInput.value = plotMinInput.value;
+        actualMinInput.disabled = true;
+      }
+    }
+
+    if (typeof window.__EXPORTED_UI_STATE === "object" && window.__EXPORTED_UI_STATE) {
+      var ui = window.__EXPORTED_UI_STATE;
+      var chartState = ui.charts || {};
+      document.querySelectorAll(".chart-toggle").forEach(function(t) {
+        var id = t.getAttribute("data-chart-id");
+        if (id && Object.prototype.hasOwnProperty.call(chartState, id)) {
+          t.checked = !!chartState[id];
+        }
+      });
+
+      var varState = ui.tableVars || {};
+      document.querySelectorAll(".table-var-checkbox").forEach(function(cb) {
+        var id = cb.getAttribute("data-var-id");
+        if (id && Object.prototype.hasOwnProperty.call(varState, id)) {
+          cb.checked = !!varState[id];
+        }
+      });
+
+      if (typeof ui.colorCodeHeaders === "boolean") {
+        var cc = document.getElementById("color-code-headers");
+        colorCodeTableHeaders = ui.colorCodeHeaders;
+        if (cc) cc.checked = colorCodeTableHeaders;
+      }
+    }
+
+    if (typeof window.__EXPORTED_SUMMARY_FREQUENCY === "string") {
+      summaryFrequency = window.__EXPORTED_SUMMARY_FREQUENCY;
+      var radios = document.querySelectorAll(".table-frequency-radio");
+      radios.forEach(function(r){
+        r.checked = (r.value === summaryFrequency);
+      });
+    }
+    if (configStepEl) configStepEl.style.display = "none";
+    if (backToConfigBtn) backToConfigBtn.style.display = "none";
+    if (rangeConfigEl) rangeConfigEl.style.display = "block";
+    if (rangeHeadingEl) rangeHeadingEl.textContent = "Set plot and table ranges";
+    if (rangeActionsEl) rangeActionsEl.style.display = "none";
+    if (dashboardStepEl) dashboardStepEl.style.display = "block";
+    if (scenarioCountLbl) {
+      var n = currentScenarios.length;
+      scenarioCountLbl.textContent = n + " scenario" + (n > 1 ? "s" : "") + " loaded";
+    }
+
+    var downloadWrap = document.getElementById("download-wrapper");
+    if (downloadWrap) downloadWrap.style.display = "none";
+
+    var ledeEl = document.querySelector(".lede");
+    if (ledeEl) {
+      ledeEl.style.display = "none";
+    }
+
+    if (window.__EXPORTED_FIXED) {
+      if (rangeConfigEl) {
+        rangeConfigEl.style.display = "none";
+      }
+      var chartToggleRow = document.getElementById("chart-toggle-row");
+      if (chartToggleRow) {
+        chartToggleRow.style.display = "none";
+      }
+      var summaryVarControls = document.getElementById("summary-var-controls");
+      if (summaryVarControls) {
+        summaryVarControls.style.display = "none";
+      }
+      var summaryColorToggle = document.getElementById("summary-color-toggle");
+      if (summaryColorToggle) {
+        summaryColorToggle.style.display = "none";
+      }
+    }
+
+    renderDashboard(currentScenarios);
+    if (typeof applyChartVisibility === "function") {
+      applyChartVisibility();
+    }
+  });
+})();
+<\/script>
+`;
+
+    const htmlNode = document.documentElement;
+    let docHtml = htmlNode.outerHTML;
+    const closingTag = '</body>';
+    const idx = docHtml.lastIndexOf(closingTag);
+    let finalHtml;
+    if (idx !== -1) {
+      finalHtml =
+        '<!doctype html>\n' +
+        docHtml.slice(0, idx) +
+        injectionScript +
+        docHtml.slice(idx);
+    } else {
+      finalHtml = '<!doctype html>\n' + docHtml + injectionScript;
+    }
+
+    const blob = new Blob([finalHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const ts = new Date();
+    const yyyy = ts.getFullYear();
+    const mm = String(ts.getMonth() + 1).padStart(2, '0');
+    const dd = String(ts.getDate()).padStart(2, '0');
+    a.href = url;
+    a.download = 'mpc_dashboard_' + yyyy + mm + dd + '.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+
+
+  function estimateTableRowCountForPdf() {
+    // Look at the actual rendered summary table so we match what autoTable sees
+    const tableEl = document.querySelector("#summary-tables table");
+    if (!tableEl) return null;
+    const tbody = tableEl.querySelector("tbody");
+    if (!tbody) return null;
+    return tbody.querySelectorAll("tr").length;
+  }
+
+function suggestMaxTableMax(ranges) {
+  const isYearly = (summaryFrequency === "yearly");
+
+  if (isYearly) {
+    const minParts = parsePeriodParts(ranges.tableMin);
+    if (!minParts) return null;
+    const rowLimit = MAX_TABLE_ROWS_PER_PAGE_YEARLY;
+    const suggestedLastYear = minParts.year + rowLimit - 1;
+    // table uses quarterly labels, suggest Q4 of that year
+    return suggestedLastYear + "Q4";
+  } else {
+    const minIdx = parsePeriodToIndex(ranges.tableMin);
+    if (minIdx == null) return null;
+    const rowLimit = MAX_TABLE_ROWS_PER_PAGE_QUARTERLY;
+    const suggestedIdx = minIdx + rowLimit - 1;
+    return indexToPeriod(suggestedIdx);
+  }
+}
+
+function handlePdfDownloadClick() {
+  if (!currentScenarios || !currentScenarios.length) {
+    alert("Please build the dashboard before exporting.");
+    return;
+  }
+
+  const ranges = getRangeConfig();
+  const estimatedRows = estimateTableRowCountForPdf();
+  const isYearly = (summaryFrequency === "yearly");
+  const rowLimit = isYearly ? MAX_TABLE_ROWS_PER_PAGE_YEARLY : MAX_TABLE_ROWS_PER_PAGE_QUARTERLY;
+
+  if (estimatedRows && estimatedRows > rowLimit) {
+    const suggestionPeriod = suggestMaxTableMax(ranges);
+
+    let msg =
+      "The current table range will produce about " +
+      estimatedRows +
+      (isYearly ? " years" : " quarters") +
+      " in the summary table, so the PDF table will spill onto multiple pages.\n\n";
+
+    if (suggestionPeriod) {
+      msg +=
+        "For a single-page table, try ending the table range around " +
+        suggestionPeriod +
+        " (about " +
+        rowLimit +
+        (isYearly ? " years" : " quarters") +
+        " from the starting point).\n\n";
+    }
+
+    msg += "Do you still want to continue with the current range?";
+
+    const proceed = confirm(msg);
+    if (!proceed) return;
+  }
+
+  // If row count is fine, or user confirms, proceed with actual export
+  downloadPdfSnapshot();
+}
+
+
+
+
+  // PDF chart pack: draw vector charts directly with jsPDF (no Plotly images)
+  window.downloadPdfSnapshot = async function() {
+    // alert("Starting PDF export...");
+    console.log("[MPC] PDF export started");
+
+    try {
+      if (!window.jspdf || !window.jspdf.jsPDF) {
+        alert("jsPDF is not loaded. Please check the script imports.");
+        return;
+      }
+
+      if (!currentScenarios || !currentScenarios.length) {
+        alert("Please load a scenario before exporting.");
+        return;
+      }
+
+      const tableEl = document.querySelector("#summary-tables table");
+      if (!tableEl) {
+        alert("Summary table not found. Please refresh the page.");
+        return;
+      }
+
+
+      const ranges = getRangeConfig();
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a3" });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 30;
+
+      // Title
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(20);
+      pdf.text("Policy Rate Projection Dashboard", margin, margin);
+
+      // Area allocations
+      // Use the same front-to-back ordering as the HTML charts
+      const orderedScenariosForPdf = [...currentScenarios].reverse();
+
+      const chartsAreaTop = margin + 40;  // leave space under the title for the legend
+      const usableHeight = pageHeight - margin * 2;
+      const chartsAreaHeight = usableHeight * 0.55;   // 55% for charts
+      const tableTop = chartsAreaTop + chartsAreaHeight + 10; // remaining ~40% for table
+
+      // Global legend (same colors as HTML legend)
+      const legendY = margin + 18;
+      let legendX = margin;
+      const legendGapX = 14;
+      const legendItemGap = 40;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      orderedScenariosForPdf.forEach(s => {
+        const label = s.name || "Scenario";
+        const swatchWidth = 14;
+        const swatchHeight = 6;
+        const labelWidth = pdf.getTextWidth(label);
+        const itemWidth = swatchWidth + 6 + labelWidth;
+
+        if (legendX + itemWidth > pageWidth - margin) {
+          legendX = margin;
+        }
+
+        const rgb = hexToRgb(s.color);
+        pdf.setFillColor(rgb.r, rgb.g, rgb.b);
+        pdf.rect(legendX, legendY - swatchHeight + 2, swatchWidth, swatchHeight, "F");
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(label, legendX + swatchWidth + 6, legendY);
+
+        legendX += itemWidth + legendItemGap;
+      });
+
+      const chartsLeft = margin;
+      const chartsRight = pageWidth - margin;
+      const chartsWidth = chartsRight - chartsLeft;
+
+      // Use a 3x2 grid for up to 6 charts, fixed chart size
+      const chartCols = 3;
+      const chartRows = 2; // 3x2 grid for up to 6 charts
+      const hGap = 24;
+      const vGap = 8;
+      const chartWidth = (chartsWidth - hGap * (chartCols - 1)) / chartCols;
+      const chartHeight = (chartsAreaHeight - vGap * (chartRows - 1)) / chartRows + 6;
+
+      const selectedChartIds = Array.from(
+        document.querySelectorAll(".chart-toggle")
+      )
+        .filter(cb => cb.checked)
+        .map(cb => cb.dataset.chartId)
+        .slice(0, 6);
+
+      if (!selectedChartIds.length) {
+        alert("Please select at least one chart to include in the Chart Pack.");
+        return;
+      }
+
+      const chartMeta = {
+        "chart-policy": {
+          title: "Policy Rate (%)",
+          yLabel: "%",
+          buildSeries: scenario => buildSingleSeriesForColumn(scenario, "i", ranges)
+        },
+        "chart-output-gap": {
+          title: "Output Gap (%)",
+          yLabel: "%",
+          buildSeries: scenario => buildSingleSeriesForColumn(scenario, "ygap", ranges)
+        },
+        "chart-headline-yoy": {
+          title: "Headline Inflation (%YoY)",
+          yLabel: "%YoY",
+          buildSeries: scenario => buildSingleSeriesForColumn(scenario, "picpi4", ranges)
+        },
+        "chart-core-yoy": {
+          title: "Core Inflation (%YoY)",
+          yLabel: "%YoY",
+          buildSeries: scenario => buildSingleSeriesForColumn(scenario, "pi4", ranges)
+        },
+        "chart-headline-qoq": {
+          title: "Headline Inflation (%QoQ ann.)",
+          yLabel: "%QoQ",
+          buildSeries: scenario => buildSingleSeriesForColumn(scenario, "picpi", ranges)
+        },
+        "chart-core-qoq": {
+          title: "Core Inflation (%QoQ ann.)",
+          yLabel: "%QoQ",
+          buildSeries: scenario => buildSingleSeriesForColumn(scenario, "pi", ranges)
+        },
+        "chart-potential-growth": {
+          title: "Potential Growth (%)",
+          yLabel: "%",
+          buildSeries: scenario => buildSingleSeriesForColumn(scenario, "dytrnd", ranges)
+        },
+        "chart-output-levels": {
+          title: "Output and Potential (log level)",
+          yLabel: "log-level",
+          buildSeries: scenario => {
+            const sY = getSeries(scenario, "y", ranges.plotMin, ranges.plotMax);
+            const sTrend = getSeries(scenario, "ytrnd", ranges.plotMin, ranges.plotMax);
+            const out = [];
+            if (sY.x.length) {
+              out.push({
+                name: scenario.name + " Output",
+                color: scenario.color,
+                kind: "output",
+                x: sY.x.slice(),
+                y: sY.y.map(v => (typeof v === "number" && v > 0 ? Math.log(v) * 100 : null))
+              });
+            }
+            if (sTrend.x.length) {
+              out.push({
+                name: scenario.name + " Potential",
+                color: scenario.color,
+                kind: "potential",
+                x: sTrend.x.slice(),
+                y: sTrend.y.map(v => (typeof v === "number" && v > 0 ? Math.log(v) * 100 : null))
+              });
+            }
+            return out;
+          }
+        },
+        "chart-policy-step": {
+          title: "Policy Rate (0.25 steps)",
+          yLabel: "%",
+          buildSeries: scenario => {
+            const s = getSeries(scenario, "i", ranges.plotMin, ranges.plotMax);
+            const stepped = s.y.map(v =>
+              typeof v === "number" ? Math.round(v * 4) / 4 : null
+            );
+            return [
+              {
+                name: scenario.name,
+                color: scenario.color,
+                kind: "output",
+                x: s.x.slice(),
+                y: stepped
+              }
+            ];
+          }
+        }
+      };
+
+      function buildSingleSeriesForColumn(scenario, col, r) {
+        const s = getSeries(scenario, col, r.plotMin, r.plotMax);
+        return [
+          {
+            name: scenario.name,
+            color: scenario.color,
+            kind: "output",
+            x: s.x.slice(),
+            y: s.y.slice()
+          }
+        ];
+      }
+
+      function toIndexedSeries(seriesList) {
+        const processed = [];
+        let minIdx = Infinity;
+        let maxIdx = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+
+        seriesList.forEach(s => {
+          const pts = [];
+          for (let i = 0; i < s.x.length; i++) {
+            const period = s.x[i];
+            const yVal = s.y[i];
+            if (typeof yVal !== "number" || !isFinite(yVal)) continue;
+            if (!periodInRange(period, ranges.plotMin, ranges.plotMax)) continue;
+            const idx = parsePeriodToIndex(period);
+            if (idx == null) continue;
+            pts.push({ idx, y: yVal });
+            if (idx < minIdx) minIdx = idx;
+            if (idx > maxIdx) maxIdx = idx;
+            if (yVal < minY) minY = yVal;
+            if (yVal > maxY) maxY = yVal;
+          }
+          if (pts.length) {
+            processed.push({
+              name: s.name,
+              color: s.color,
+              kind: s.kind || "output",
+              points: pts
+            });
+          }
+        });
+
+        if (!processed.length) return null;
+
+        if (minY === maxY) {
+          minY -= 1;
+          maxY += 1;
+        }
+        const yPad = (maxY - minY) * 0.08;
+        minY -= yPad;
+        maxY += yPad;
+
+        return { series: processed, minIdx, maxIdx, minY, maxY };
+      }
+
+        function idxToYear(idx) {
+        let q = idx % 4;
+        let year = (idx - q) / 4;
+        if (q === 0) {
+            year -= 1;
+        }
+        return year;
+        }
+
+      function drawSingleChart(chartId, colIndex, rowIndex) {
+        const meta = chartMeta[chartId];
+        if (!meta) return;
+
+        let allSeries = [];
+        orderedScenariosForPdf.forEach(scenario => {
+          const seriesForScenario = meta.buildSeries(scenario) || [];
+          allSeries = allSeries.concat(seriesForScenario);
+        });
+
+        const indexed = toIndexedSeries(allSeries);
+        if (!indexed) return;
+
+        const cellX = chartsLeft + colIndex * (chartWidth + hGap);
+        const cellY = chartsAreaTop + rowIndex * (chartHeight + vGap);
+
+        // Chart title: bigger, centered
+        const titleY = cellY + 16;
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(13);
+        pdf.text(meta.title, cellX + chartWidth / 2, titleY, { align: "center" });
+
+        const plotLeft = cellX + 40;
+        const plotRight = cellX + chartWidth - 10;
+        const plotTop = cellY + 24;
+        const plotBottom = cellY + chartHeight - 24;
+
+        // Shaded actual-data range (same logic as HTML charts)
+        const shadeMin = ranges.plotMin;
+        const shadeMax = ranges.actualMax;
+        const shadeMinIdx = parsePeriodToIndex(shadeMin);
+        const shadeMaxIdx = parsePeriodToIndex(shadeMax);
+        if (shadeMinIdx != null && shadeMaxIdx != null && shadeMaxIdx > shadeMinIdx) {
+          const x0Idx = Math.max(shadeMinIdx, indexed.minIdx);
+          const x1Idx = Math.min(shadeMaxIdx, indexed.maxIdx);
+          if (x1Idx > x0Idx) {
+            const x0 = plotLeft + ((x0Idx - indexed.minIdx) / Math.max(indexed.maxIdx - indexed.minIdx, 1)) * (plotRight - plotLeft);
+            const x1 = plotLeft + ((x1Idx - indexed.minIdx) / Math.max(indexed.maxIdx - indexed.minIdx, 1)) * (plotRight - plotLeft);
+            pdf.setFillColor(245, 248, 252); // light background
+            pdf.rect(x0, plotTop, x1 - x0, plotBottom - plotTop, "F");
+          }
+        }
+
+        pdf.setLineWidth(0.8);
+        pdf.setDrawColor(0, 0, 0);
+        pdf.line(plotLeft, plotTop, plotLeft, plotBottom);
+        pdf.line(plotLeft, plotBottom, plotRight, plotBottom);
+
+        const xRange = Math.max(indexed.maxIdx - indexed.minIdx, 1);
+        const yRange = Math.max(indexed.maxY - indexed.minY, 1);
+
+        // Faint grid color
+        const gridColor = { r: 230, g: 234, b: 242 };
+
+        // Horizontal gridlines and y-axis ticks
+        const yTicks = 4;
+        pdf.setFont("helvetica", "normal");
+        for (let i = 0; i <= yTicks; i++) {
+          const val = indexed.minY + (yRange * i) / yTicks;
+          const yPos = plotBottom - ((val - indexed.minY) / yRange) * (plotBottom - plotTop);
+          pdf.setDrawColor(gridColor.r, gridColor.g, gridColor.b);
+          pdf.setLineWidth(0.3);
+          pdf.line(plotLeft, yPos, plotRight, yPos);
+          pdf.setDrawColor(0, 0, 0);
+          pdf.setLineWidth(0.8);
+          pdf.setFontSize(9);
+          pdf.text(val.toFixed(1), plotLeft - 4, yPos + 2, { align: "right" });
+        }
+
+        // Vertical gridlines and x-axis ticks/labels
+        const firstYear = idxToYear(indexed.minIdx);
+        const lastYear = idxToYear(indexed.maxIdx);
+        const yearSpan = Math.max(lastYear - firstYear, 1);
+        const yearStep = yearSpan > 8 ? 2 : 1;
+
+        for (let y = firstYear; y <= lastYear; y += yearStep) {
+          const idxForYear = y * 4 + 1;
+          const xPos =
+            plotLeft + ((idxForYear - indexed.minIdx) / xRange) * (plotRight - plotLeft);
+          if (xPos < plotLeft - 5 || xPos > plotRight + 5) continue;
+          pdf.setDrawColor(gridColor.r, gridColor.g, gridColor.b);
+          pdf.setLineWidth(0.3);
+          pdf.line(xPos, plotTop, xPos, plotBottom);
+          pdf.setDrawColor(0, 0, 0);
+          pdf.setLineWidth(0.8);
+          pdf.line(xPos, plotBottom, xPos, plotBottom - 4);
+          pdf.setFontSize(9);
+          pdf.text(String(y), xPos, plotBottom + 10, { align: "center" });
+        }
+
+        // Series lines and markers (thicker; dotted for potential series)
+        indexed.series.forEach(s => {
+          const rgb = hexToRgb(s.color);
+          pdf.setDrawColor(rgb.r, rgb.g, rgb.b);
+          pdf.setFillColor(rgb.r, rgb.g, rgb.b);
+          pdf.setLineWidth(2.0);
+
+          // Solid for output, dotted for potential
+          const isPotential = s.kind === "potential";
+          if (typeof pdf.setLineDash === "function") {
+            if (isPotential) {
+              pdf.setLineDash([3, 3], 0);
+            } else {
+              pdf.setLineDash([], 0);
+            }
+          }
+
+          const pts = s.points;
+          for (let i = 1; i < pts.length; i++) {
+            const p0 = pts[i - 1];
+            const p1 = pts[i];
+            const x0 =
+              plotLeft + ((p0.idx - indexed.minIdx) / xRange) * (plotRight - plotLeft);
+            const x1 =
+              plotLeft + ((p1.idx - indexed.minIdx) / xRange) * (plotRight - plotLeft);
+            const y0 =
+              plotBottom - ((p0.y - indexed.minY) / yRange) * (plotBottom - plotTop);
+            const y1 =
+              plotBottom - ((p1.y - indexed.minY) / yRange) * (plotBottom - plotTop);
+            pdf.line(x0, y0, x1, y1);
+          }
+
+          // Markers for both output and potential
+          pts.forEach(p => {
+            const x = plotLeft + ((p.idx - indexed.minIdx) / xRange) * (plotRight - plotLeft);
+            const y =
+              plotBottom - ((p.y - indexed.minY) / yRange) * (plotBottom - plotTop);
+            pdf.circle(x, y, 2.4, "F");
+          });
+
+          // Reset dash after each series
+          if (typeof pdf.setLineDash === "function") {
+            pdf.setLineDash([], 0);
+          }
+        });
+
+        // y-axis label, slightly larger font
+        if (meta.yLabel) {
+          const yLabelX = cellX + 12;
+          const yLabelY = (plotTop + plotBottom) / 2;
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(9);
+          pdf.text(meta.yLabel, yLabelX, yLabelY, {
+            angle: 90,
+            align: "center"
+          });
+        }
+      }
+
+      selectedChartIds.forEach((chartId, idx) => {
+        const row = Math.floor(idx / chartCols);
+        const col = idx % chartCols;
+        if (row < chartRows) {
+          drawSingleChart(chartId, col, row);
+        }
+      });
+
+      const autoTable = pdf.autoTable;
+      if (!autoTable) {
+        alert("jsPDF autoTable plugin is not loaded. Please check the script imports.");
+        return;
+      }
+
+        const scenarioColorByCol = {}; // colIndex -> [r,g,b]
+
+      autoTable.call(pdf, {
+        html: tableEl,
+        startY: tableTop,
+        theme: "grid",
+        tableWidth: "auto",
+        margin: { top: tableTop, left: margin, right: margin },
+        styles: {
+          font: "helvetica",
+          fontSize: 10,
+          cellPadding: 3,
+          lineWidth: 0.1,
+          halign: "center",
+          valign: "middle"
+        },
+        headStyles: (colorCodeTableHeaders ? {
+          fillColor: [248, 250, 252],
+          lineWidth: 0.1,
+          halign: "center",
+          valign: "middle"
+        } : {
+          fillColor: [248, 250, 252],
+          textColor: 0,
+          lineWidth: 0.1,
+          halign: "center",
+          valign: "middle"
+        }),
+        didParseCell: function (data) {
+          if (!colorCodeTableHeaders) return;
+
+          // 1) Header rows
+          if (data.section === "head") {
+            // Row 0 = variable names (Output Gap, Policy Rate, etc.) -> keep black
+            if (data.row.index === 0) {
+              data.cell.styles.textColor = [0, 0, 0];
+              return;
+            }
+
+            // Row 1 = scenario names -> color by scenario and remember color per column
+            if (data.row.index === 1) {
+              const scenarioName = String(data.cell.text || "").trim();
+              const match = currentScenarios.find(s => s.name === scenarioName);
+              if (match && match.color) {
+                const rgb = hexToRgb(match.color);
+                data.cell.styles.textColor = [rgb.r, rgb.g, rgb.b];
+                scenarioColorByCol[data.column.index] = [rgb.r, rgb.g, rgb.b];
+              } else {
+                // fallback: black if no scenario match
+                data.cell.styles.textColor = [0, 0, 0];
+              }
+            }
+            return;
+          }
+
+          // 2) Body rows -> inherit color from their scenario column if available
+          if (data.section === "body") {
+            const colColor = scenarioColorByCol[data.column.index];
+            if (colColor) {
+              data.cell.styles.textColor = colColor;
+            }
+          }
+        },
+        didDrawPage: data => {
+          const footerText =
+            "Exported on " +
+            new Date().toLocaleString("en-US", {
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit"
+            });
+          pdf.setFontSize(8);
+          pdf.setTextColor(0, 0, 0);
+          pdf.text(
+            footerText,
+            margin,
+            pdf.internal.pageSize.getHeight() - 12
+          );
+        }
+      });
+
+      const firstScenarioName = currentScenarios[0]?.name || "Scenario";
+      pdf.save(firstScenarioName + "_chart_pack.pdf");
+    } catch (err) {
+      console.error("PDF export error:", err);
+      alert("PDF export failed: " + (err && err.message ? err.message : err));
+    }
+  };
+
+
+
+
+// Helper: convert hex color to RGB for PDF chart drawing
+function hexToRgb(hex) {
+  if (!hex) return { r: 0, g: 0, b: 0 };
+  let c = String(hex).trim();
+  if (c[0] === "#") c = c.slice(1);
+  if (c.length === 3) {
+    c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+  }
+  const num = parseInt(c, 16);
+  if (isNaN(num)) return { r: 0, g: 0, b: 0 };
+  return {
+    r: (num >> 16) & 255,
+    g: (num >> 8) & 255,
+    b: num & 255
+  };
+}
+
+  function reRenderIfReady() {
+    if (dashboardStepEl.style.display !== "none" && currentScenarios && currentScenarios.length) {
+      renderDashboard(currentScenarios);
+    }
+  }
+
+  [plotMinInput, plotMaxInput, actualMinInput, actualMaxInput, tableMinInput, tableMaxInput].forEach(el => {
+    if (!el) return;
+    el.addEventListener("change", () => {
+      // Keep actual-min locked to plot-min
+      if (el === plotMinInput && actualMinInput) {
+        actualMinInput.value = plotMinInput.value;
+      }
+      reRenderIfReady();
+    });
+  });
+  // Helper to compute actual data shading (shaded region) for charts
+  function buildActualDataShading(ranges) {
+    const shadeMin = ranges.plotMin;
+    const shadeMax = ranges.actualMax;
+    const minIdx = parsePeriodToIndex(shadeMin);
+    const maxIdx = parsePeriodToIndex(shadeMax);
+    // If plot-min is beyond actual-max (or either is invalid), do not draw shading
+    if (minIdx == null || maxIdx == null || minIdx > maxIdx) {
+      return [];
+    }
+    return [
+      {
+        type: "rect",
+        xref: "x",
+        yref: "paper",
+        x0: shadeMin,
+        x1: shadeMax,
+        y0: 0,
+        y1: 1,
+        fillcolor: "rgba(15,23,42,0.08)",
+        line: { width: 0 }
+      }
+    ];
+  }
+
+  // Chart visibility toggles
+  function applyChartVisibility() {
+    const toggles = document.querySelectorAll(".chart-toggle");
+    toggles.forEach(toggle => {
+      const targetId = toggle.getAttribute("data-chart-id");
+      const targetEl = document.getElementById(targetId);
+      if (!targetEl) return;
+      targetEl.style.display = toggle.checked ? "block" : "none";
+    });
+
+    // After visibility changes, force Plotly to recompute sizes
+    const visibleCharts = document.querySelectorAll(".chart-box");
+    visibleCharts.forEach(box => {
+      if (box.style.display !== "none" && typeof Plotly !== "undefined" && Plotly.Plots && typeof Plotly.Plots.resize === "function") {
+        Plotly.Plots.resize(box);
+      }
+    });
+  }
+
+  // Initialize visibility and listen for changes
+  document.addEventListener("DOMContentLoaded", () => {
+    applyChartVisibility();
+    const toggles = document.querySelectorAll(".chart-toggle");
+    toggles.forEach(toggle => {
+      toggle.addEventListener("change", applyChartVisibility);
+    });
+
+    const tableVarCheckboxes = document.querySelectorAll(".table-var-checkbox");
+    tableVarCheckboxes.forEach(cb => {
+      cb.addEventListener("change", reRenderIfReady);
+    });
+    const freqRadios = document.querySelectorAll(".table-frequency-radio");
+    freqRadios.forEach(r => {
+      if (r.checked) summaryFrequency = r.value;
+      r.addEventListener("change", e => {
+        if (e.target.checked) {
+          summaryFrequency = e.target.value;
+          reRenderIfReady();
+        }
+      });
+    });
+  });
+
+  // Helpers for period range
+  function parsePeriodToIndex(p) {
+    if (p == null) return null;
+    const m = /^(\d{4})Q([1-4])$/.exec(String(p).trim());
+    if (!m) return null;
+    const year = parseInt(m[1], 10);
+    const q = parseInt(m[2], 10);
+    if (!year || !q) return null;
+    return year * 4 + q;
+  }
+
+  function indexToPeriod(idx) {
+  if (typeof idx !== "number" || !isFinite(idx)) return null;
+  let q = idx % 4;
+  let year = (idx - q) / 4;
+  if (q === 0) {
+    q = 4;
+    year -= 1;
+  }
+  return year + "Q" + q;
+}
+
+  function periodInRange(p, minP, maxP) {
+    const idx = parsePeriodToIndex(p);
+    if (idx == null) return true; // if we cannot parse, do not filter out
+    const minIdx = minP ? parsePeriodToIndex(minP) : null;
+    const maxIdx = maxP ? parsePeriodToIndex(maxP) : null;
+    if (minIdx != null && idx < minIdx) return false;
+    if (maxIdx != null && idx > maxIdx) return false;
+    return true;
+  }
+
+  function parsePeriodParts(p) {
+    const m = /^(\d{4})Q([1-4])$/.exec(String(p).trim());
+    if (!m) return null;
+    return { year: parseInt(m[1], 10), q: parseInt(m[2], 10) };
+  }
+
+  function buildXAxisLayout(ranges) {
+    if (!availablePeriods.length) return {};
+    const inPlot = availablePeriods.filter(p =>
+      periodInRange(p, ranges.plotMin, ranges.plotMax)
+    );
+    if (!inPlot.length) return {};
+
+    // Decide tick density based on how many quarters are in range
+    const n = inPlot.length;
+    let mode; // "all", "yearly", "biennial"
+    if (n <= 12) {
+      mode = "all";          // up to 3 years: show every quarter label
+    } else if (n <= 40) {
+      mode = "yearly";       // medium: show roughly yearly ticks
+    } else {
+      mode = "biennial";     // long horizon: show every 2 years
+    }
+
+    // Helper: pick one representative quarter per year (prefer Q1, else Q1 in that year, else fallback)
+    const periodSet = new Set(inPlot);
+    const firstParts = parsePeriodParts(inPlot[0]);
+    const lastParts  = parsePeriodParts(inPlot[inPlot.length - 1]);
+    if (!firstParts || !lastParts) return {};
+
+    const tickvals = [];
+    const ticktext = [];
+    const stepYears = mode === "biennial" ? 2 : 1;
+
+    for (let y = firstParts.year; y <= lastParts.year; y += stepYears) {
+      let candidate = `${y}Q1`;
+      if (!periodSet.has(candidate)) {
+        // Try to find Q1 in this year in the plot range
+        const alt = inPlot.find(p => {
+          const parts = parsePeriodParts(p);
+          return parts && parts.year === y && parts.q === 1;
+        });
+        if (!alt) {
+          // Fallback: any quarter in this year in the plot range
+          const fallback = inPlot.find(p => {
+            const parts = parsePeriodParts(p);
+            return parts && parts.year === y;
+          });
+          if (fallback) candidate = fallback; else continue;
+        } else {
+          candidate = alt;
+        }
+      }
+      if (!periodInRange(candidate, ranges.plotMin, ranges.plotMax)) continue;
+      tickvals.push(candidate);
+      ticktext.push(String(y));
+    }
+
+    if (mode === "all") {
+      // For short ranges, show all quarter labels
+      return {
+        tickmode: "array",
+        tickvals: inPlot,
+        ticktext: inPlot
+      };
+    }
+
+    // For yearly/biennial: always use full Qx labels for tickvals, year for ticktext
+    return {
+      tickmode: "array",
+      tickvals: tickvals,     // full Qx labels preserved
+      ticktext: ticktext      // year-only text
+    };
+  }
+
+  function getSeries(scenario, colName, minPeriod, maxPeriod) {
+    const rows = scenario.data || [];
+    const x = [];
+    const y = [];
+    for (const r of rows) {
+      const xv = r.period;
+      const yv = r[colName];
+      if (
+        xv != null &&
+        xv !== "" &&
+        typeof yv === "number" &&
+        !isNaN(yv) &&
+        periodInRange(xv, minPeriod, maxPeriod)
+      ) {
+        x.push(xv);
+        y.push(yv);
+      }
+    }
+    return { x, y };
+  }
+
+  // Render plots and tables
+  function renderScenarioLegend(scenarios) {
+    if (!scenarioLegendEl) return;
+    if (!scenarios || !scenarios.length) {
+      scenarioLegendEl.innerHTML = "";
+      return;
+    }
+    const items = scenarios.map(s => {
+      const color = s.color || "#000000";
+      const name = s.name || "Scenario";
+      return `
+        <span style="display:inline-flex;align-items:center;margin-right:8px;margin-bottom:4px;">
+          <span style="width:10px;height:10px;border-radius:999px;background:${color};display:inline-block;margin-right:4px;"></span>
+          <span>${name}</span>
+        </span>
+      `;
+    });
+    scenarioLegendEl.innerHTML = items.join("");
+  }
+
+  function renderDashboard(scenarios) {
+    const ranges = getRangeConfig();
+    renderScenarioLegend(scenarios);
+    renderOutputGapChart(scenarios, ranges);
+    renderOutputLevelsChart(scenarios, ranges);
+    renderHeadlineYoyChart(scenarios, ranges);
+    renderCoreYoyChart(scenarios, ranges);
+    renderPolicyChart(scenarios, ranges);
+    renderPolicyStepChart(scenarios, ranges);
+    renderPotentialGrowthChart(scenarios, ranges);
+    renderCoreQoqChart(scenarios, ranges);
+    renderHeadlineQoqChart(scenarios, ranges);
+    renderSummaryTables(scenarios, ranges);
+
+    // Ensure all charts fit their grid cells on initial render
+    const visibleCharts = document.querySelectorAll(".chart-box");
+    visibleCharts.forEach(box => {
+      if (box.style.display !== "none" && typeof Plotly !== "undefined" && Plotly.Plots && typeof Plotly.Plots.resize === "function") {
+        Plotly.Plots.resize(box);
+      }
+    });
+  }
+
+  function renderPolicyChart(scenarios, ranges) {
+    const traces = [...scenarios].reverse().map(s => {
+      const series = getSeries(s, "i", ranges.plotMin, ranges.plotMax);
+      return {
+        x: series.x,
+        y: series.y,
+        customdata: series.x,
+        mode: "lines",
+        name: s.name,
+        line: { color: s.color },
+        hovertemplate: "%{customdata}<br>" + s.name + ": %{y:.2f}%<extra></extra>"
+      };
+    });
+    const layout = {
+      title: "Policy Rate (%)",
+      margin: { t: 40, r: 10, b: 40, l: 55 },
+      xaxis: buildXAxisLayout(ranges),
+      yaxis: { title: "Percent", tickformat: ".2f" },
+      showlegend: false,
+      shapes: buildActualDataShading(ranges)
+    };
+    Plotly.newPlot("chart-policy", traces, layout, { responsive: true });
+  }
+
+  function renderPolicyStepChart(scenarios, ranges) {
+    const traces = [...scenarios].reverse().map(s => {
+      const raw = getSeries(s, "i", ranges.plotMin, ranges.plotMax);
+      const steppedY = raw.y.map(v => {
+        if (typeof v === "number" && !isNaN(v)) {
+          return Math.round(v / 0.25) * 0.25;
+        }
+        return null;
+      });
+      return {
+        x: raw.x,
+        y: steppedY,
+        customdata: raw.x,
+        mode: "lines",
+        name: s.name,
+        line: { color: s.color, dash: "dot" },
+        hovertemplate: "%{customdata}<br>" + s.name + ": %{y:.2f}%<extra></extra>"
+      };
+    });
+    const layout = {
+      title: "Policy Rate (%, in 0.25 increments)",
+      margin: { t: 40, r: 10, b: 40, l: 55 },
+      xaxis: buildXAxisLayout(ranges),
+      yaxis: { title: "Percent", tickformat: ".2f" },
+      showlegend: false,
+      shapes: buildActualDataShading(ranges)
+    };
+    Plotly.newPlot("chart-policy-step", traces, layout, { responsive: true });
+  }
+
+
+  // 1) Output Gap (%): ygap
+  function renderOutputGapChart(scenarios, ranges) {
+    const traces = [...scenarios].reverse().map(s => {
+      const series = getSeries(s, "ygap", ranges.plotMin, ranges.plotMax);
+      return {
+        x: series.x,
+        y: series.y,
+        customdata: series.x,
+        mode: "lines",
+        name: s.name,
+        line: { color: s.color },
+        hovertemplate: "%{customdata}<br>" + s.name + ": %{y:.2f}%<extra></extra>"
+      };
+    });
+    const layout = {
+      title: "Output Gap (%)",
+      margin: { t: 40, r: 10, b: 40, l: 55 },
+      xaxis: buildXAxisLayout(ranges),
+      yaxis: { title: "Percent", tickformat: ".2f" },
+      showlegend: false,
+      shapes: buildActualDataShading(ranges)
+    };
+    Plotly.newPlot("chart-output-gap", traces, layout, { responsive: true });
+  }
+
+  // 2) Output & Potential Output: y & ytrnd
+  function renderOutputLevelsChart(scenarios, ranges) {
+    const traces = [];
+    [...scenarios].reverse().forEach(s => {
+      const seriesY = getSeries(s, "y", ranges.plotMin, ranges.plotMax);
+      const seriesYtrnd = getSeries(s, "ytrnd", ranges.plotMin, ranges.plotMax);
+      const yLn = seriesY.y.map(v =>
+        typeof v === "number" && v > 0 ? Math.log(v) * 100 : null
+      );
+      const yTrndLn = seriesYtrnd.y.map(v =>
+        typeof v === "number" && v > 0 ? Math.log(v) * 100 : null
+      );
+
+      traces.push({
+        x: seriesY.x,
+        y: yLn,
+        customdata: seriesY.x,
+        mode: "lines",
+        name: s.name + " — Output",
+        line: { color: s.color },
+        hovertemplate: "%{customdata}<br>" + s.name + " — Output: %{y:.2f}<extra></extra>"
+      });
+
+      traces.push({
+        x: seriesYtrnd.x,
+        y: yTrndLn,
+        customdata: seriesYtrnd.x,
+        mode: "lines",
+        name: s.name + " — Potential",
+        line: { color: s.color, dash: "dot" },
+        hovertemplate: "%{customdata}<br>" + s.name + " — Potential: %{y:.2f}<extra></extra>"
+      });
+    });
+
+    const layout = {
+      title: "Output & Potential Output",
+      margin: { t: 40, r: 10, b: 40, l: 55 },
+      xaxis: buildXAxisLayout(ranges),
+      yaxis: { title: "Level (ln × 100)" },
+      showlegend: false,
+      shapes: buildActualDataShading(ranges)
+    };
+    Plotly.newPlot("chart-output-levels", traces, layout, { responsive: true });
+  }
+
+  // 3) Headline Inflation (%YoY): picpi4
+  function renderHeadlineYoyChart(scenarios, ranges) {
+    const traces = [...scenarios].reverse().map(s => {
+      const series = getSeries(s, "picpi4", ranges.plotMin, ranges.plotMax);
+      return {
+        x: series.x,
+        y: series.y,
+        customdata: series.x,
+        mode: "lines",
+        name: s.name,
+        line: { color: s.color },
+        hovertemplate: "%{customdata}<br>" + s.name + ": %{y:.2f}%<extra></extra>"
+      };
+    });
+    const layout = {
+      title: "Headline Inflation (%YoY)",
+      margin: { t: 40, r: 10, b: 40, l: 55 },
+      xaxis: buildXAxisLayout(ranges),
+      yaxis: { title: "Percent", tickformat: ".2f" },
+      showlegend: false,
+      shapes: buildActualDataShading(ranges)
+    };
+    Plotly.newPlot("chart-headline-yoy", traces, layout, { responsive: true });
+  }
+
+  // 4) Core Inflation (%YoY): pi4
+  function renderCoreYoyChart(scenarios, ranges) {
+    const traces = [...scenarios].reverse().map(s => {
+      const series = getSeries(s, "pi4", ranges.plotMin, ranges.plotMax);
+      return {
+        x: series.x,
+        y: series.y,
+        customdata: series.x,
+        mode: "lines",
+        name: s.name,
+        line: { color: s.color },
+        hovertemplate: "%{customdata}<br>" + s.name + ": %{y:.2f}%<extra></extra>"
+      };
+    });
+    const layout = {
+      title: "Core Inflation (%YoY)",
+      margin: { t: 40, r: 10, b: 40, l: 55 },
+      xaxis: buildXAxisLayout(ranges),
+      yaxis: { title: "Percent", tickformat: ".2f" },
+      showlegend: false,
+      shapes: buildActualDataShading(ranges)
+    };
+    Plotly.newPlot("chart-core-yoy", traces, layout, { responsive: true });
+  }
+
+  // 7) Ann. Potential Growth (%): dytrnd
+  function renderPotentialGrowthChart(scenarios, ranges) {
+    const traces = [...scenarios].reverse().map(s => {
+      const series = getSeries(s, "dytrnd", ranges.plotMin, ranges.plotMax);
+      return {
+        x: series.x,
+        y: series.y,
+        customdata: series.x,
+        mode: "lines",
+        name: s.name,
+        line: { color: s.color },
+        hovertemplate: "%{customdata}<br>" + s.name + ": %{y:.2f}%<extra></extra>"
+      };
+    });
+    const layout = {
+      title: "Ann. Potential Growth (%)",
+      margin: { t: 40, r: 10, b: 40, l: 55 },
+      xaxis: buildXAxisLayout(ranges),
+      yaxis: { title: "Percent", tickformat: ".2f" },
+      showlegend: false,
+      shapes: buildActualDataShading(ranges)
+    };
+    Plotly.newPlot("chart-potential-growth", traces, layout, { responsive: true });
+  }
+
+  // 8) Core Inflation (%QoQ Ann.): pi
+  function renderCoreQoqChart(scenarios, ranges) {
+    const traces = [...scenarios].reverse().map(s => {
+      const series = getSeries(s, "pi", ranges.plotMin, ranges.plotMax);
+      return {
+        x: series.x,
+        y: series.y,
+        customdata: series.x,
+        mode: "lines",
+        name: s.name,
+        line: { color: s.color },
+        hovertemplate: "%{customdata}<br>" + s.name + ": %{y:.2f}%<extra></extra>"
+      };
+    });
+    const layout = {
+      title: "Core Inflation (%QoQ Ann.)",
+      margin: { t: 40, r: 10, b: 40, l: 55 },
+      xaxis: buildXAxisLayout(ranges),
+      yaxis: { title: "Percent", tickformat: ".2f" },
+      showlegend: false,
+      shapes: buildActualDataShading(ranges)
+    };
+    Plotly.newPlot("chart-core-qoq", traces, layout, { responsive: true });
+  }
+
+  // 9) Headline Inflation (%QoQ Ann.): picpi
+  function renderHeadlineQoqChart(scenarios, ranges) {
+    const traces = [...scenarios].reverse().map(s => {
+      const series = getSeries(s, "picpi", ranges.plotMin, ranges.plotMax);
+      return {
+        x: series.x,
+        y: series.y,
+        customdata: series.x,
+        mode: "lines",
+        name: s.name,
+        line: { color: s.color },
+        hovertemplate: "%{customdata}<br>" + s.name + ": %{y:.2f}%<extra></extra>"
+      };
+    });
+    const layout = {
+      title: "Headline Inflation (%QoQ Ann.)",
+      margin: { t: 40, r: 10, b: 40, l: 55 },
+      xaxis: buildXAxisLayout(ranges),
+      yaxis: { title: "Percent", tickformat: ".2f" },
+      showlegend: false,
+      shapes: buildActualDataShading(ranges)
+    };
+    Plotly.newPlot("chart-headline-qoq", traces, layout, { responsive: true });
+  }
+
+
+  function renderSummaryTables(scenarios, ranges) {
+    const tableMin = ranges.tableMin;
+    const tableMax = ranges.tableMax;
+    renderSummaryLegend(scenarios);
+
+    // Determine which variables are selected
+    const varCheckboxes = document.querySelectorAll(".table-var-checkbox");
+    const activeVarIds = Array.from(varCheckboxes)
+      .filter(cb => cb.checked)
+      .map(cb => cb.getAttribute("data-var-id"))
+      .filter(id => !!tableVarConfig[id]);
+
+    if (!activeVarIds.length) {
+      summaryTablesEl.innerHTML = "<p style='font-size:13px;color:var(--muted);'>Select at least one variable to display.</p>";
+      return;
+    }
+
+    const vars = activeVarIds.map(id => ({
+      id,
+      label: tableVarConfig[id].label
+    }));
+
+    // Decide frequency: quarterly or yearly
+    const isYearly = (summaryFrequency === "yearly");
+
+    // Collect all periods within the table range across all scenarios
+    const periodSet = new Set();
+    scenarios.forEach(s => {
+      (s.data || []).forEach(r => {
+        const p = r.period;
+        if (p != null && p !== "" && periodInRange(p, tableMin, tableMax)) {
+          periodSet.add(String(p).trim());
+        }
+      });
+    });
+
+    let periods = Array.from(periodSet);
+    periods.sort((a, b) => parsePeriodToIndex(a) - parsePeriodToIndex(b));
+
+    if (!periods.length) {
+      summaryTablesEl.innerHTML = "<p style='font-size:13px;color:var(--muted);'>No observations in the selected table range.</p>";
+      return;
+    }
+
+    // Yearly aggregation helpers
+    let yearlyPeriods = [];
+    let yearlyLookups = {};
+    if (isYearly) {
+      // Build yearly period list: use the year extracted from any 4Q or any quarter in that year
+      const yearSet = new Set();
+      periods.forEach(p => {
+        const parts = parsePeriodParts(p);
+        if (parts) yearSet.add(parts.year);
+      });
+      const years = Array.from(yearSet).sort((a, b) => a - b);
+      yearlyPeriods = years.map(y => String(y));
+
+      // For each scenario, compute yearly aggregates
+      scenarios.forEach(s => {
+        const ymap = {};
+        const byYear = {};
+
+        (s.data || []).forEach(r => {
+          const p = r.period;
+          if (p == null || p === "") return;
+          if (!periodInRange(p, tableMin, tableMax)) return;
+          const parts = parsePeriodParts(p);
+          if (!parts) return;
+          const year = parts.year;
+          if (!byYear[year]) byYear[year] = [];
+          byYear[year].push(r);
+        });
+
+        Object.keys(byYear).forEach(yk => {
+          const year = parseInt(yk, 10);
+          const rows = byYear[year].sort((a, b) => parsePeriodToIndex(a.period) - parsePeriodToIndex(b.period));
+
+          const candidateQ4 = rows.find(r => {
+            const parts = parsePeriodParts(r.period);
+            return parts && parts.q === 4;
+          });
+          const repRow = candidateQ4 || rows[rows.length - 1];
+
+          const aggregated = Object.assign({}, repRow);
+
+          if (Array.isArray(rows) && rows.length) {
+            const last = rows[rows.length - 1];
+            aggregated.ygap = (typeof last.avg_ygap === "number") ? last.avg_ygap : aggregated.ygap;
+            aggregated.picpi4 = (typeof last.HL_inf === "number") ? last.HL_inf : aggregated.picpi4;
+            aggregated.pi4 = (typeof last.CORE_inf === "number") ? last.CORE_inf : aggregated.pi4;
+            aggregated.y_growth = (typeof last.dyA_nonsa === "number") ? last.dyA_nonsa : aggregated.y_growth;
+            aggregated.annual_GDP = (typeof last.dyA_nonsa === "number") ? last.dyA_nonsa : aggregated.annual_GDP;
+          }
+
+          aggregated.period = String(year);
+          ymap[aggregated.period] = aggregated;
+        });
+
+        yearlyLookups[s.name] = ymap;
+      });
+    }
+
+    // For each scenario, build a lookup: period -> raw row (quarterly)
+    const lookups = {};
+    scenarios.forEach(s => {
+      const map = {};
+      (s.data || []).forEach(r => {
+        const p = r.period;
+        if (p == null || p === "") return;
+        if (!periodInRange(p, tableMin, tableMax)) return;
+        const key = String(p).trim();
+        map[key] = r;
+      });
+      lookups[s.name] = map;
+    });
+
+    const scenariosOrdered = scenarios.map(s => s.name);
+    const scenarioColorMap = {};
+    scenarios.forEach(s => {
+      scenarioColorMap[s.name] = s.color;
+    });
+
+    const displayPeriods = isYearly ? yearlyPeriods : periods;
+
+    let html = `
+      <table>
+        <thead>
+          <tr>
+            <th rowspan="2">${isYearly ? "Year" : "Period"}</th>
+    `;
+
+    // First header row: variable names spanning all scenarios
+    vars.forEach(v => {
+      html += `<th colspan="${scenariosOrdered.length}">${v.label}</th>`;
+    });
+
+    html += `
+          </tr>
+          <tr>
+    `;
+
+    // Second header row: scenario names under each variable
+    vars.forEach(() => {
+      scenariosOrdered.forEach(name => {
+        const color = colorCodeTableHeaders ? scenarioColorMap[name] : null;
+        const colorStyle = color ? ` style="color:${color};"` : "";
+        html += `<th${colorStyle}>${name}</th>`;
+      });
+    });
+
+    html += `
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    // Body rows
+    if (!isYearly) {
+      // Quarterly: one row per period
+      displayPeriods.forEach(p => {
+        html += `<tr><td>${p}</td>`;
+        vars.forEach(v => {
+          const cfg = tableVarConfig[v.id];
+          scenariosOrdered.forEach(name => {
+            const lu = lookups[name] || {};
+            const rec = lu[p];
+            const color = colorCodeTableHeaders ? scenarioColorMap[name] : null;
+            const styleAttr = color ? ` style="color:${color};"` : "";
+            let val = "";
+            if (rec && cfg && typeof cfg.accessor === "function") {
+              const raw = cfg.accessor(rec);
+              if (typeof raw === "number" && !isNaN(raw)) {
+                val = raw.toFixed(2);
+              }
+            }
+            html += `<td${styleAttr}>${val}</td>`;
+          });
+        });
+        html += `</tr>`;
+      });
+    } else {
+      // Yearly: one row per year
+      displayPeriods.forEach(yearStr => {
+        html += `<tr><td>${yearStr}</td>`;
+        const year = parseInt(yearStr, 10);
+
+        vars.forEach(v => {
+          scenariosOrdered.forEach(name => {
+            const color = colorCodeTableHeaders ? scenarioColorMap[name] : null;
+            const styleAttr = color ? ` style="color:${color};"` : "";
+            const cfg = tableVarConfig[v.id];
+
+            const ymap = yearlyLookups[name] || {};
+            const rec = ymap[yearStr];
+
+            let val = "";
+            if (rec && cfg && typeof cfg.accessor === "function") {
+              const raw = cfg.accessor(rec);
+              if (typeof raw === "number" && !isNaN(raw)) {
+                val = raw.toFixed(2);
+              }
+            }
+            html += `<td${styleAttr}>${val}</td>`;
+          });
+        });
+
+        html += `</tr>`;
+      });
+    }
+
+    html += "</tbody></table>";
+    summaryTablesEl.innerHTML = html;
+  }
+</script>
+<footer class="site-footer">
+  © 2025 Nick
+</footer>
+</body>
+</html>
