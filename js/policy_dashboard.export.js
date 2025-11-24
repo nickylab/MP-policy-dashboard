@@ -238,7 +238,7 @@ async function downloadStandaloneDashboard(exportFixed) {
   const mm = String(ts.getMonth() + 1).padStart(2, "0");
   const dd = String(ts.getDate()).padStart(2, "0");
   a.href = url;
-  a.download = "mpc_dashboard_" + yyyy + mm + dd + ".html";
+  a.download = "MPC_Dashboard_" + yyyy + mm + dd + ".html";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -813,8 +813,11 @@ function handlePdfDownloadClick() {
         }
       });
 
-      const firstScenarioName = currentScenarios[0]?.name || "Scenario";
-      pdf.save(firstScenarioName + "_chart_pack.pdf");
+      const ts = new Date();
+      const yyyy = ts.getFullYear();
+      const mm = String(ts.getMonth() + 1).padStart(2, "0");
+      const dd = String(ts.getDate()).padStart(2, "0");
+      pdf.save("MPC_Dashboard_" + yyyy + mm + dd + ".pdf");
     } catch (err) {
       console.error("PDF export error:", err);
       alert("PDF export failed: " + (err && err.message ? err.message : err));

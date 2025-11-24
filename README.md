@@ -58,3 +58,4 @@ No build tooling is required. You can open the main HTML file directly in a brow
     ├── policy_dashboard.charts.js # Plotly charts
     ├── policy_dashboard.summary.js# Summary tables
     └── policy_dashboard.export.js # HTML and PDF export logic
+```
