@@ -761,44 +761,41 @@ function handlePdfDownloadClick() {
         didParseCell: function (data) {
           if (!colorCodeTableHeaders) return;
 
-          // 1) Header rows: color any cell whose text matches a scenario name,
-          // keep non-scenario headers (e.g., variable names, Year/Period) black.
-          if (data.section === "head") {
-            const text = String(data.cell.text || "").trim();
-            const match = currentScenarios.find(s => s.name === text);
+          // Build a stable mapping from header cells to scenario colors the first time
+          // we see a header cell, using *all* header rows. This avoids relying on
+          // platform-specific row indices and ensures each scenario column keeps
+          // its own color.
+          if (!data.table.__scenarioColorMapBuilt && data.section === "head") {
+            if (data.table && Array.isArray(data.table.head)) {
+              data.table.head.forEach(function (row, rowIdx) {
+                row.forEach(function (cell, colIdx) {
+                  const txt = String(cell.text || cell.raw || "").trim();
+                  const match = currentScenarios.find(function (s) { return s.name === txt; });
+                  if (match && match.color) {
+                    const rgb = hexToRgb(match.color);
+                    scenarioColorByCol[colIdx] = [rgb.r, rgb.g, rgb.b];
+                  }
+                });
+              });
+            }
+            data.table.__scenarioColorMapBuilt = true;
+          }
 
-            if (match && match.color) {
-              const rgb = hexToRgb(match.color);
-              data.cell.styles.textColor = [rgb.r, rgb.g, rgb.b];
-              // Remember this color for the corresponding body column
-              scenarioColorByCol[data.column.index] = [rgb.r, rgb.g, rgb.b];
+          // Header cells: apply scenario colors where we have them;
+          // keep non-scenario headers (e.g. Year/Period, variable groups) black.
+          if (data.section === "head") {
+            const colColor = scenarioColorByCol[data.column.index];
+            if (colColor) {
+              data.cell.styles.textColor = colColor;
             } else if (data.row.index === 0) {
-              // Top header row (variable groups / Year/Period) stays black
               data.cell.styles.textColor = [0, 0, 0];
             }
             return;
           }
 
-          // 2) Body rows -> inherit color from their scenario column if available.
-          // If the mapping is missing (e.g. due to platform differences in header indexing),
-          // derive it from the header's scenario name for this column.
+          // Body cells: inherit color from their scenario column if available.
           if (data.section === "body") {
-            let colColor = scenarioColorByCol[data.column.index];
-
-            if (!colColor && data.table && data.table.head && data.table.head.length > 1) {
-              const headerRow = data.table.head[1];
-              const headerCell = headerRow && headerRow[data.column.index];
-              if (headerCell) {
-                const scenarioName = String(headerCell.text || headerCell.raw || "").trim();
-                const match = currentScenarios.find(s => s.name === scenarioName);
-                if (match && match.color) {
-                  const rgb = hexToRgb(match.color);
-                  colColor = [rgb.r, rgb.g, rgb.b];
-                  scenarioColorByCol[data.column.index] = colColor;
-                }
-              }
-            }
-
+            const colColor = scenarioColorByCol[data.column.index];
             if (colColor) {
               data.cell.styles.textColor = colColor;
             }
