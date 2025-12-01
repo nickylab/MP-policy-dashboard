@@ -803,20 +803,39 @@ function handlePdfDownloadClick() {
             data.table.__scenarioColorMapBuilt = true;
           }
 
-          // Header cells: apply scenario colors where we have them;
-          // keep non-scenario headers (e.g. Year/Period, variable groups) black.
+          // HEADER CELLS
           if (data.section === "head") {
-            const colColor = scenarioColorByCol[data.column.index];
-            if (colColor) {
-              data.cell.styles.textColor = colColor;
-            } else if (data.row.index === 0) {
+            const cellText = String(data.cell.text || data.cell.raw || "").trim();
+
+            // First column = Year / variable labels -> always black
+            if (data.column.index === 0) {
+              data.cell.styles.textColor = [0, 0, 0];
+              return;
+            }
+
+            // Only color header cells whose text matches a scenario name.
+            // Group headers like "Output Gap (%)", "Policy Rate (%)" stay black.
+            const match = currentScenarios.find(function (s) { return s.name === cellText; });
+            if (match && match.color) {
+              const rgb = hexToRgb(match.color);
+              data.cell.styles.textColor = [rgb.r, rgb.g, rgb.b];
+              // Ensure the scenario color map has this column set too (for body cells).
+              scenarioColorByCol[data.column.index] = [rgb.r, rgb.g, rgb.b];
+            } else {
               data.cell.styles.textColor = [0, 0, 0];
             }
             return;
           }
 
-          // Body cells: inherit color from their scenario column if available.
+          // BODY CELLS
           if (data.section === "body") {
+            // First column = variable names -> always black
+            if (data.column.index === 0) {
+              data.cell.styles.textColor = [0, 0, 0];
+              return;
+            }
+
+            // Other columns inherit scenario color if available
             const colColor = scenarioColorByCol[data.column.index];
             if (colColor) {
               data.cell.styles.textColor = colColor;
