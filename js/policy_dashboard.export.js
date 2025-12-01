@@ -767,15 +767,37 @@ function handlePdfDownloadClick() {
           // its own color.
           if (!data.table.__scenarioColorMapBuilt && data.section === "head") {
             if (data.table && Array.isArray(data.table.head)) {
-              data.table.head.forEach(function (row, rowIdx) {
-                row.forEach(function (cell, colIdx) {
-                  const txt = String(cell.text || cell.raw || "").trim();
-                  const match = currentScenarios.find(function (s) { return s.name === txt; });
-                  if (match && match.color) {
-                    const rgb = hexToRgb(match.color);
-                    scenarioColorByCol[colIdx] = [rgb.r, rgb.g, rgb.b];
-                  }
-                });
+              data.table.head.forEach(function (row) {
+                if (!row || !row.cells) return;
+
+                const cells = row.cells;
+                if (Array.isArray(cells)) {
+                  // cells as array
+                  cells.forEach(function (cell, colIdx) {
+                    if (!cell) return;
+                    const txt = String(cell.text || cell.raw || "").trim();
+                    const match = currentScenarios.find(function (s) { return s.name === txt; });
+                    if (match && match.color) {
+                      const rgb = hexToRgb(match.color);
+                      scenarioColorByCol[colIdx] = [rgb.r, rgb.g, rgb.b];
+                    }
+                  });
+                } else if (typeof cells === "object") {
+                  // cells as object keyed by column index
+                  Object.keys(cells).forEach(function (key) {
+                    const cell = cells[key];
+                    if (!cell) return;
+                    const colIdx = cell.column && typeof cell.column.index === "number"
+                      ? cell.column.index
+                      : parseInt(key, 10);
+                    const txt = String(cell.text || cell.raw || "").trim();
+                    const match = currentScenarios.find(function (s) { return s.name === txt; });
+                    if (match && match.color) {
+                      const rgb = hexToRgb(match.color);
+                      scenarioColorByCol[colIdx] = [rgb.r, rgb.g, rgb.b];
+                    }
+                  });
+                }
               });
             }
             data.table.__scenarioColorMapBuilt = true;
